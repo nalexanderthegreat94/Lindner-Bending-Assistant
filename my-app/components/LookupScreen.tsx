@@ -26,7 +26,7 @@ interface HistoryEntry {
 }
 
 export default function LookupScreen() {
-  const { db, addDataPoint, importCSV: importCSVData } = useBendData();
+  const { db, addDataPoint } = useBendData();
   const [material] = useState('2mm_aluminum');
 
   const availableFlanges = useMemo(() => {
@@ -40,13 +40,6 @@ export default function LookupScreen() {
   const [result, setResult] = useState<CorrectionResult | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showChart, setShowChart] = useState(false);
-
-  // Import modal state
-  const [showImportModal, setShowImportModal] = useState(false);
-  const [importFormState, setImportFormState] = useState({
-    csvContent: '',
-    flange: flangeLength,
-  });
 
   // Add New Correction modal state
   const [showAddNewModal, setShowAddNewModal] = useState(false);
@@ -186,23 +179,6 @@ export default function LookupScreen() {
     }
   };
 
-  const handleImportBatch = async () => {
-    const flange = importFormState.flange;
-    if (!importFormState.csvContent.trim()) {
-      alert('Please paste CSV data before importing');
-      return;
-    }
-
-    try {
-      const count = await importCSVData(material, flange, importFormState.csvContent);
-      setShowImportModal(false);
-      setImportFormState({ csvContent: '', flange: flangeLength });
-      alert(`Successfully imported ${count} data point${count !== 1 ? 's' : ''} into ${flange}mm flange`);
-    } catch (e: any) {
-      alert(e.message || 'Import failed. Check that each row is: bendLength,correction,crown');
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -278,14 +254,6 @@ export default function LookupScreen() {
                       <Text style={styles.resultErrorIcon}>⊘</Text>
                       <Text style={styles.resultErrorTitle}>{result.error}</Text>
                     </View>
-                    <Text style={styles.resultErrorReason}>{result.reason}</Text>
-                    {result.maxBendLength && (
-                      <View style={styles.resultHint}>
-                        <Text style={styles.resultHintText}>
-                          💡 Max bend length for {flangeLength}mm flange: <Text style={styles.bold}>{result.maxBendLength}mm</Text>
-                        </Text>
-                      </View>
-                    )}
                   </>
                 ) : (
                   <>
@@ -317,14 +285,6 @@ export default function LookupScreen() {
                       ⚠ EXTRAPOLATED — {result.extrapolatedAbove
                         ? `Above maximum tested (${result.maxTested}mm)`
                         : `Below minimum tested (${result.minTested}mm)`}. Use with caution.
-                    </Text>
-                  </View>
-                )}
-
-                {!result.isExact && !result.isExtrapolated && (
-                  <View style={styles.resultInfo}>
-                    <Text style={styles.resultInfoText}>
-                      ⟨ Interpolated between {result.interpolatedBetween?.[0]}mm and {result.interpolatedBetween?.[1]}mm ⟩
                     </Text>
                   </View>
                 )}
@@ -423,15 +383,6 @@ export default function LookupScreen() {
             }}
           >
             <Text style={styles.manageButtonText}>+ Add Correction</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.manageButton}
-            onPress={() => {
-              setImportFormState({ csvContent: '', flange: flangeLength });
-              setShowImportModal(true);
-            }}
-          >
-            <Text style={styles.manageButtonText}>↑ Import CSV</Text>
           </TouchableOpacity>
         </View>
 
@@ -580,52 +531,6 @@ export default function LookupScreen() {
         </View>
       </Modal>
 
-      {/* Import Batch Modal */}
-      <Modal visible={showImportModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.importModal}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Import Batch Data</Text>
-              <TouchableOpacity onPress={() => setShowImportModal(false)}>
-                <Text style={styles.modalClose}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView contentContainerStyle={styles.modalContent}>
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Flange Height</Text>
-                <DropdownPicker
-                  options={availableFlanges.map(f => ({ label: `${f}mm`, value: f.toString() }))}
-                  selectedValue={importFormState.flange.toString()}
-                  onSelect={(val) => setImportFormState({ ...importFormState, flange: Number(val) })}
-                />
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>CSV Data</Text>
-                <Text style={styles.csvHint}>Format: bendLength,correction,crown (one row per line)</Text>
-                <TextInput
-                  style={[styles.input, styles.csvInput]}
-                  placeholder={'100,5.9,0\n200,5.3,0\n300,6.1,0.12'}
-                  multiline
-                  numberOfLines={8}
-                  value={importFormState.csvContent}
-                  onChangeText={(text) =>
-                    setImportFormState({ ...importFormState, csvContent: text })
-                  }
-                />
-              </View>
-
-              <TouchableOpacity
-                style={styles.submitButton}
-                onPress={handleImportBatch}
-              >
-                <Text style={styles.submitButtonText}>Import Data</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }

@@ -1,5 +1,5 @@
-import ImportDataScreen from '@/components/ImportDataScreen';
+import SettingsScreen from '@/components/SettingsScreen';
 
-export default function SettingsScreen() {
-  return <ImportDataScreen />;
+export default function SettingsTab() {
+  return <SettingsScreen />;
 }
