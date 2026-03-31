@@ -223,21 +223,30 @@ export default function LookupScreen() {
         </View>
 
         {/* Numpad */}
-        <View style={styles.numpadGrid}>
-          {['7', '8', '9', 'C', '4', '5', '6', '⌫', '1', '2', '3', '.', '0', '00', 'GO'].map((key) => (
-            <TouchableOpacity
-              key={key}
-              onPress={() => handleNumpadPress(key)}
-              style={[
-                styles.numpadButton,
-                key === 'GO' && styles.numpadButtonGO,
-                key === 'C' && styles.numpadButtonClear,
-                key === '⌫' && styles.numpadButtonDelete,
-              ]}
-            >
-              <Text style={styles.numpadButtonText}>{key}</Text>
-            </TouchableOpacity>
+        <View style={styles.numpadContainer}>
+          {[['7','8','9'],['4','5','6'],['1','2','3'],['C','0','⌫']].map((row, rowIdx) => (
+            <View key={rowIdx} style={styles.numpadRow}>
+              {row.map((key) => (
+                <TouchableOpacity
+                  key={key}
+                  onPress={() => handleNumpadPress(key)}
+                  style={[
+                    styles.numpadButton,
+                    key === 'C' && styles.numpadButtonClear,
+                    key === '⌫' && styles.numpadButtonDelete,
+                  ]}
+                >
+                  <Text style={styles.numpadButtonText}>{key}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           ))}
+          <TouchableOpacity
+            onPress={() => handleNumpadPress('GO')}
+            style={styles.numpadButtonCalculate}
+          >
+            <Text style={styles.numpadButtonCalculateText}>Calculate</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Result Display */}
@@ -651,25 +660,22 @@ const styles = StyleSheet.create({
     minHeight: 50,
     fontFamily: 'monospace',
   },
-  numpadGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  numpadContainer: {
     gap: 6,
     marginBottom: 12,
   },
+  numpadRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
   numpadButton: {
-    width: `${(100 / 4) - 3}%`,
-    aspectRatio: 1,
+    flex: 1,
+    aspectRatio: 1.6,
     backgroundColor: '#252542',
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    borderWidth: 0,
-    minHeight: 44,
-  },
-  numpadButtonGO: {
-    width: `${(100 / 2) - 3}%`,
-    backgroundColor: '#10b981',
+    minHeight: 52,
   },
   numpadButtonClear: {
     backgroundColor: '#dc2626',
@@ -678,9 +684,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366f1',
   },
   numpadButtonText: {
-    fontSize: 14,
+    fontSize: 22,
     fontWeight: '600',
     color: '#fff',
+  },
+  numpadButtonCalculate: {
+    backgroundColor: '#10b981',
+    borderRadius: 8,
+    paddingVertical: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  numpadButtonCalculateText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 1,
   },
   resultContainer: {
     borderRadius: 12,
