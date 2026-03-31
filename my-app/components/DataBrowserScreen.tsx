@@ -1,219 +1,356 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
-  SectionList,
   TouchableOpacity,
+  SafeAreaView,
 } from 'react-native';
-import { bendDatabase } from '@/src/database';
-import { BendDataset, BendDataPoint } from '@/src/types';
+import { useBendData } from '@/src/context/BendDataContext';
+import { BendDataPoint } from '@/src/types';
+
+const MATERIAL_KEY = '2mm_aluminum';
 
 export default function DataBrowserScreen() {
-  const [datasets, setDatasets] = useState<BendDataset[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedDatasetId, setSelectedDatasetId] = useState<string | null>(null);
+  const { db } = useBendData();
+  const material = db[MATERIAL_KEY];
 
-  useEffect(() => {
-    loadDatasets();
-  }, []);
+  const availableFlanges = useMemo(
+    () => Object.keys(material.flanges).map(Number).sort((a, b) => a - b),
+    [material]
+  );
 
-  const loadDatasets = async () => {
-    try {
-      setLoading(true);
-      const allDatasets = await bendDatabase.getAllDatasets();
-      setDatasets(allDatasets);
-    } catch (error) {
-      console.error('Error loading datasets:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const [selectedFlange, setSelectedFlange] = useState(() => {
+    // Default to the flange with the most data points
+    const flanges = Object.keys(material.flanges).map(Number).sort((a, b) => a - b);
+    return flanges.includes(10) ? 10 : flanges[0];
+  });
 
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading data...</Text>
-      </View>
-    );
-  }
+  const flangeData: BendDataPoint[] = material.flanges[selectedFlange] || [];
+  const validData = flangeData.filter(d => d.correction !== null);
 
-  if (datasets.length === 0) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>No bend correction datasets available</Text>
-      </View>
-    );
-  }
-
-  const selectedDataset = datasets.find(d => d.id === selectedDatasetId) || datasets[0];
-
-  // Prepare data for SectionList
-  const sections = selectedDataset.data.map((point: BendDataPoint, index: number) => ({
-    title: `Bend Length: ${point.bendLength.toFixed(0)} mm`,
-    data: [point],
-    key: `point-${index}`,
-  }));
+  const stats = useMemo(() => {
+    if (validData.length === 0) return null;
+    const lengths = validData.map(d => d.bendLength);
+    return {
+      count: validData.length,
+      min: Math.min(...lengths),
+      max: Math.max(...lengths),
+    };
+  }, [validData]);
 
   return (
-    <View style={styles.container}>
-      {/* Dataset Selector */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.datasetSelectorContainer}
-        contentContainerStyle={styles.datasetSelectorContent}
-      >
-        {datasets.map(dataset => (
-          <TouchableOpacity
-            key={dataset.id}
-            style={[
-              styles.datasetTab,
-              selectedDataset.id === dataset.id && styles.datasetTabActive,
-            ]}
-            onPress={() => setSelectedDatasetId(dataset.id)}
-          >
-            <Text
+    <SafeAreaView style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>BROWSE DATA</Text>
+          <Text style={styles.headerSubtitle}>{material.name}</Text>
+        </View>
+        <View style={styles.headerIcon}>
+          <Text style={styles.headerIconText}>≡</Text>
+        </View>
+      </View>
+
+      {/* Flange selector */}
+      <View style={styles.flangeSection}>
+        <Text style={styles.sectionLabel}>Flange Length</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.flangeScrollContent}
+        >
+          {availableFlanges.map(flange => (
+            <TouchableOpacity
+              key={flange}
+              onPress={() => setSelectedFlange(flange)}
               style={[
-                styles.datasetTabText,
-                selectedDataset.id === dataset.id && styles.datasetTabTextActive,
+                styles.flangeTab,
+                selectedFlange === flange && styles.flangeTabActive,
               ]}
             >
-              {dataset.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* Dataset Info */}
-      <View style={styles.infoBar}>
-        <Text style={styles.infoBarText}>
-          Data Points: {selectedDataset.data.length}
-        </Text>
-        <Text style={styles.infoBarText}>
-          Range: {selectedDataset.data[0]?.bendLength}mm - {selectedDataset.data[selectedDataset.data.length - 1]?.bendLength}mm
-        </Text>
+              <Text
+                style={[
+                  styles.flangeTabText,
+                  selectedFlange === flange && styles.flangeTabTextActive,
+                ]}
+              >
+                {flange}mm
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
 
-      {/* Data Table */}
-      <SectionList
-        sections={sections}
-        keyExtractor={(item, index) => index.toString()}
-        renderItem={({ item }) => <DataPointRow point={item} />}
-        renderSectionHeader={({ section: { title } }) => (
-          <Text style={styles.sectionHeader}>{title}</Text>
+      {/* Stats bar */}
+      {stats ? (
+        <View style={styles.statsBar}>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>DATA POINTS</Text>
+            <Text style={styles.statValue}>{stats.count}</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>MIN LENGTH</Text>
+            <Text style={styles.statValue}>{stats.min}mm</Text>
+          </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>MAX LENGTH</Text>
+            <Text style={styles.statValue}>{stats.max}mm</Text>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.statsBar}>
+          <Text style={styles.noDataText}>No data for {selectedFlange}mm flange</Text>
+        </View>
+      )}
+
+      {/* Table header */}
+      <View style={styles.tableHeader}>
+        <Text style={[styles.tableHeaderCell, styles.colBendLength]}>Bend (mm)</Text>
+        <Text style={[styles.tableHeaderCell, styles.colCorrection]}>Correction</Text>
+        <Text style={[styles.tableHeaderCell, styles.colCrown]}>Crown</Text>
+        <Text style={[styles.tableHeaderCell, styles.colNote]}>Note</Text>
+      </View>
+
+      {/* Table rows */}
+      <ScrollView style={styles.tableBody} contentContainerStyle={styles.tableBodyContent}>
+        {flangeData.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>No data for {selectedFlange}mm flange</Text>
+          </View>
+        ) : (
+          flangeData.map((point, idx) => (
+            <View
+              key={`${point.bendLength}-${idx}`}
+              style={[styles.tableRow, idx % 2 === 0 && styles.tableRowEven]}
+            >
+              <Text style={[styles.tableCell, styles.colBendLength, styles.cellBendLength]}>
+                {point.bendLength}
+              </Text>
+              <Text
+                style={[
+                  styles.tableCell,
+                  styles.colCorrection,
+                  point.correction !== null ? styles.cellCorrection : styles.cellNull,
+                ]}
+              >
+                {point.correction !== null ? `${point.correction}°` : '—'}
+              </Text>
+              <Text
+                style={[
+                  styles.tableCell,
+                  styles.colCrown,
+                  point.crown !== null ? styles.cellCrown : styles.cellNull,
+                ]}
+              >
+                {point.crown !== null ? point.crown : '—'}
+              </Text>
+              <Text style={[styles.tableCell, styles.colNote, styles.cellNote]}>
+                {point.note || ''}
+              </Text>
+            </View>
+          ))
         )}
-        contentContainerStyle={styles.listContent}
-        scrollEnabled={true}
-      />
-    </View>
-  );
-}
-
-function DataPointRow({ point }: { point: BendDataPoint }) {
-  return (
-    <View style={styles.dataRow}>
-      <View style={styles.dataCell}>
-        <Text style={styles.dataCellLabel}>Bend Correction</Text>
-        <Text style={styles.dataCellValue}>{point.bendCorrection.toFixed(3)}°</Text>
-      </View>
-      <View style={styles.dataCell}>
-        <Text style={styles.dataCellLabel}>Crown</Text>
-        <Text style={styles.dataCellValue}>{point.crown.toFixed(4)}</Text>
-      </View>
-    </View>
+        <View style={styles.tableFooter} />
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#0d0d1a',
   },
-  datasetSelectorContainer: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#DDD',
-    backgroundColor: '#FFF',
+  header: {
+    backgroundColor: '#f59e0b',
+    borderRadius: 12,
+    padding: 16,
+    margin: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    elevation: 5,
   },
-  datasetSelectorContent: {
-    paddingHorizontal: 8,
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1a1a2e',
+    letterSpacing: -0.5,
   },
-  datasetTab: {
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    marginHorizontal: 4,
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent',
+  headerSubtitle: {
+    fontSize: 12,
+    color: '#1a1a2e',
+    opacity: 0.8,
+    marginTop: 4,
   },
-  datasetTabActive: {
-    borderBottomColor: '#007AFF',
+  headerIcon: {
+    width: 48,
+    height: 48,
+    backgroundColor: '#1a1a2e',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  datasetTabText: {
-    fontSize: 13,
-    fontWeight: '500',
-    color: '#666',
-  },
-  datasetTabTextActive: {
-    color: '#007AFF',
+  headerIconText: {
+    fontSize: 24,
+    color: '#f59e0b',
     fontWeight: '700',
   },
-  infoBar: {
-    backgroundColor: '#FFF',
+  flangeSection: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
+    marginBottom: 12,
   },
-  infoBarText: {
-    fontSize: 12,
-    color: '#555',
-    marginVertical: 2,
-  },
-  sectionHeader: {
-    fontSize: 14,
-    fontWeight: '600',
-    backgroundColor: '#E8E8E8',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    color: '#333',
-    marginTop: 1,
-  },
-  dataRow: {
-    backgroundColor: '#FFF',
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  dataCell: {
-    flex: 1,
-  },
-  dataCellLabel: {
+  sectionLabel: {
     fontSize: 11,
     color: '#888',
-    marginBottom: 2,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 8,
   },
-  dataCellValue: {
-    fontSize: 16,
+  flangeScrollContent: {
+    gap: 8,
+    paddingRight: 4,
+  },
+  flangeTab: {
+    backgroundColor: '#252542',
+    borderWidth: 2,
+    borderColor: '#3d3d5c',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  flangeTabActive: {
+    backgroundColor: '#f59e0b',
+    borderColor: '#f59e0b',
+  },
+  flangeTabText: {
+    color: '#888',
+    fontSize: 13,
     fontWeight: '600',
-    color: '#000',
   },
-  listContent: {
-    paddingBottom: 20,
+  flangeTabTextActive: {
+    color: '#1a1a2e',
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#666',
+  statsBar: {
+    flexDirection: 'row',
+    backgroundColor: '#252542',
+    marginHorizontal: 16,
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'space-around',
   },
-  errorText: {
-    fontSize: 16,
-    color: '#D32F2F',
+  statItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  statLabel: {
+    fontSize: 10,
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#f59e0b',
+  },
+  statDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: '#3d3d5c',
+  },
+  noDataText: {
+    color: '#888',
+    fontSize: 13,
+    flex: 1,
     textAlign: 'center',
-    marginTop: 20,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#1a1a2e',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#3d3d5c',
+  },
+  tableHeaderCell: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  tableBody: {
+    flex: 1,
+  },
+  tableBodyContent: {
+    paddingHorizontal: 16,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e1e35',
+    alignItems: 'center',
+  },
+  tableRowEven: {
+    backgroundColor: '#111125',
+  },
+  tableCell: {
+    fontSize: 14,
+    color: '#e8e8e8',
+  },
+  colBendLength: {
+    flex: 2,
+  },
+  colCorrection: {
+    flex: 2,
+  },
+  colCrown: {
+    flex: 1.5,
+  },
+  colNote: {
+    flex: 2,
+  },
+  cellBendLength: {
+    fontWeight: '600',
+    color: '#fff',
+    fontFamily: 'monospace',
+  },
+  cellCorrection: {
+    color: '#4ade80',
+    fontWeight: '700',
+  },
+  cellCrown: {
+    color: '#60a5fa',
+    fontWeight: '600',
+  },
+  cellNull: {
+    color: '#ef4444',
+    fontWeight: '700',
+  },
+  cellNote: {
+    color: '#f59e0b',
+    fontSize: 12,
+  },
+  emptyState: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyStateText: {
+    color: '#555',
+    fontSize: 14,
+  },
+  tableFooter: {
+    height: 20,
   },
 });

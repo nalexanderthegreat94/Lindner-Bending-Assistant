@@ -1,4 +1,4 @@
-import { BendDataPoint, CorrectionResult } from '../types';
+import { BendDataPoint, CorrectionResult, MaterialsDatabase } from '../types';
 import { MATERIALS_DB } from '../database/sampleData';
 
 /**
@@ -65,14 +65,16 @@ function linearRegressionExtrapolate(
 }
 
 /**
- * Find bend correction using interpolation/extrapolation
+ * Find bend correction using interpolation/extrapolation.
+ * Pass a custom `db` (e.g. merged user data) or omit to use the built-in MATERIALS_DB.
  */
 export function findCorrection(
   materialKey: string,
   flangeLength: number,
-  bendLength: number
+  bendLength: number,
+  db: MaterialsDatabase = MATERIALS_DB
 ): CorrectionResult {
-  const material = MATERIALS_DB[materialKey];
+  const material = db[materialKey];
   if (!material) return { error: "Material not found" };
 
   const flangeData = material.flanges[flangeLength];

@@ -9,7 +9,7 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
-import { MATERIALS_DB } from '@/src/database/sampleData';
+import { useBendData } from '@/src/context/BendDataContext';
 import { findCorrection } from '@/src/utils/interpolation';
 import { CorrectionResult } from '@/src/types';
 
@@ -25,17 +25,16 @@ interface HistoryEntry {
 }
 
 export default function LookupScreen() {
+  const { db, addDataPoint, importCSV: importCSVData } = useBendData();
   const [material] = useState('2mm_aluminum');
+
   const availableFlanges = useMemo(() => {
-    const mat = MATERIALS_DB[material];
+    const mat = db[material];
     if (!mat) return [];
     return Object.keys(mat.flanges).map(Number).sort((a, b) => a - b);
-  }, [material]);
-  
-  const [flangeLength, setFlangeLength] = useState(() => {
-    const flanges = Object.keys(MATERIALS_DB['2mm_aluminum'].flanges).map(Number);
-    return flanges.length > 0 ? flanges[0] : 10;
-  });
+  }, [db, material]);
+
+  const [flangeLength, setFlangeLength] = useState(10);
   const [bendLengthInput, setBendLengthInput] = useState('');
   const [result, setResult] = useState<CorrectionResult | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -45,10 +44,7 @@ export default function LookupScreen() {
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFormState, setImportFormState] = useState({
     csvContent: '',
-    material: 'Aluminum',
-    thickness: '2',
-    thicknessUnit: 'mm' as 'mm' | 'gauge',
-    flange: '20',
+    flange: flangeLength,
   });
 
   // Add New Correction modal state
@@ -60,7 +56,7 @@ export default function LookupScreen() {
   });
 
   const chartData = useMemo(() => {
-    const mat = MATERIALS_DB[material];
+    const mat = db[material];
     if (!mat || !mat.flanges[flangeLength]) return [];
     return mat.flanges[flangeLength]
       .filter(d => d.correction !== null)
@@ -69,7 +65,7 @@ export default function LookupScreen() {
         correction: d.correction,
         crown: d.crown
       }));
-  }, [material, flangeLength]);
+  }, [db, material, flangeLength]);
 
   const handleNumpadPress = (value: string) => {
     if (value === 'C') {
@@ -91,13 +87,13 @@ export default function LookupScreen() {
       return;
     }
 
-    const res = findCorrection(material, flangeLength, bendLen);
+    const res = findCorrection(material, flangeLength, bendLen, db);
     setResult(res);
 
     if (!res.error) {
       const historyEntry: HistoryEntry = {
         id: Date.now(),
-        material: MATERIALS_DB[material].name,
+        material: db[material]?.name || material,
         flange: flangeLength,
         bendLength: bendLen,
         correction: res.correction || 0,
@@ -112,29 +108,49 @@ export default function LookupScreen() {
   const loadFromHistory = (entry: HistoryEntry) => {
     setBendLengthInput(entry.bendLength.toString());
     setFlangeLength(entry.flange);
-    const res = findCorrection(material, entry.flange, entry.bendLength);
+    const res = findCorrection(material, entry.flange, entry.bendLength, db);
     setResult(res);
   };
 
   const handleAddNewCorrection = async () => {
     const bendLen = parseFloat(addNewFormState.bendLength);
-    const corrections = parseFloat(addNewFormState.bendCorrection);
+    const correction = parseFloat(addNewFormState.bendCorrection);
+    const crown = addNewFormState.crown ? parseFloat(addNewFormState.crown) : 0;
 
-    if (isNaN(bendLen) || isNaN(corrections)) {
-      alert('Please fill in all required fields');
+    if (isNaN(bendLen) || bendLen <= 0 || isNaN(correction)) {
+      alert('Please enter a valid bend length and correction');
       return;
     }
 
-    // TODO: Add to local database
-    setShowAddNewModal(false);
-    setAddNewFormState({ bendLength: '', bendCorrection: '', crown: '' });
-    alert('Correction added successfully');
+    try {
+      await addDataPoint(material, flangeLength, {
+        bendLength: bendLen,
+        correction,
+        crown: isNaN(crown) ? 0 : crown,
+      });
+      setShowAddNewModal(false);
+      setAddNewFormState({ bendLength: '', bendCorrection: '', crown: '' });
+      alert(`Added ${bendLen}mm → ${correction}° to ${flangeLength}mm flange`);
+    } catch {
+      alert('Failed to save correction. Please try again.');
+    }
   };
 
   const handleImportBatch = async () => {
-    // TODO: Parse CSV and add to database
-    setShowImportModal(false);
-    alert('Data imported successfully');
+    const flange = importFormState.flange;
+    if (!importFormState.csvContent.trim()) {
+      alert('Please paste CSV data before importing');
+      return;
+    }
+
+    try {
+      const count = await importCSVData(material, flange, importFormState.csvContent);
+      setShowImportModal(false);
+      setImportFormState({ csvContent: '', flange: flangeLength });
+      alert(`Successfully imported ${count} data point${count !== 1 ? 's' : ''} into ${flange}mm flange`);
+    } catch (e: any) {
+      alert(e.message || 'Import failed. Check that each row is: bendLength,correction,crown');
+    }
   };
 
   return (
@@ -157,7 +173,7 @@ export default function LookupScreen() {
             <Text style={styles.selectionLabel}>Material</Text>
             <TouchableOpacity style={styles.dropdown}>
               <Text style={styles.dropdownText}>
-                {MATERIALS_DB[material]?.name}
+                {db[material]?.name}
               </Text>
             </TouchableOpacity>
           </View>
@@ -361,6 +377,25 @@ export default function LookupScreen() {
           </View>
         )}
 
+        {/* Manage Data */}
+        <View style={styles.manageDataRow}>
+          <TouchableOpacity
+            style={styles.manageButton}
+            onPress={() => setShowAddNewModal(true)}
+          >
+            <Text style={styles.manageButtonText}>+ Add Correction</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.manageButton}
+            onPress={() => {
+              setImportFormState({ csvContent: '', flange: flangeLength });
+              setShowImportModal(true);
+            }}
+          >
+            <Text style={styles.manageButtonText}>↑ Import CSV</Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Footer */}
         <Text style={styles.footer}>
           Data: 2mm/12ga 3003 Aluminum • More materials coming soon
@@ -372,7 +407,7 @@ export default function LookupScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.addNewModal}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add New Correction</Text>
+              <Text style={styles.modalTitle}>Add Correction — {flangeLength}mm flange</Text>
               <TouchableOpacity onPress={() => setShowAddNewModal(false)}>
                 <Text style={styles.modalClose}>✕</Text>
               </TouchableOpacity>
@@ -442,57 +477,34 @@ export default function LookupScreen() {
 
             <ScrollView contentContainerStyle={styles.modalContent}>
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Material Name</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Aluminum"
-                  value={importFormState.material}
-                  onChangeText={(text) =>
-                    setImportFormState({ ...importFormState, material: text })
-                  }
-                />
-              </View>
-
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, { flex: 1 }]}>
-                  <Text style={styles.label}>Thickness</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="2"
-                    keyboardType="decimal-pad"
-                    value={importFormState.thickness}
-                    onChangeText={(text) =>
-                      setImportFormState({ ...importFormState, thickness: text })
-                    }
-                  />
+                <Text style={styles.label}>Flange Length</Text>
+                <View style={styles.flangeButtonsContainer}>
+                  {availableFlanges.map((flange: number) => (
+                    <TouchableOpacity
+                      key={`import-flange-${flange}`}
+                      onPress={() => setImportFormState({ ...importFormState, flange })}
+                      style={[
+                        styles.flangeButton,
+                        importFormState.flange === flange && styles.flangeButtonActive,
+                      ]}
+                    >
+                      <Text style={[
+                        styles.flangeButtonText,
+                        importFormState.flange === flange && styles.flangeButtonTextActive,
+                      ]}>
+                        {flange}mm
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-
-                <View style={[styles.formGroup, { flex: 1, marginLeft: 12 }]}>
-                  <Text style={styles.label}>Unit</Text>
-                  <TouchableOpacity style={styles.input}>
-                    <Text>{importFormState.thicknessUnit}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Flange Length (mm)</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="20"
-                  keyboardType="decimal-pad"
-                  value={importFormState.flange}
-                  onChangeText={(text) =>
-                    setImportFormState({ ...importFormState, flange: text })
-                  }
-                />
               </View>
 
               <View style={styles.formGroup}>
                 <Text style={styles.label}>CSV Data</Text>
+                <Text style={styles.csvHint}>Format: bendLength,correction,crown (one row per line)</Text>
                 <TextInput
                   style={[styles.input, styles.csvInput]}
-                  placeholder="bendLength,correction,crown&#10;100,5.9,0&#10;200,5.3,0"
+                  placeholder={'100,5.9,0\n200,5.3,0\n300,6.1,0.12'}
                   multiline
                   numberOfLines={8}
                   value={importFormState.csvContent}
@@ -898,11 +910,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#60a5fa',
   },
+  manageDataRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  manageButton: {
+    flex: 1,
+    backgroundColor: '#1a1a2e',
+    borderWidth: 1,
+    borderColor: '#3d3d5c',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  manageButtonText: {
+    color: '#a5a5c5',
+    fontSize: 13,
+    fontWeight: '600',
+  },
   footer: {
     textAlign: 'center',
     fontSize: 11,
     color: '#555',
-    marginTop: 20,
+    marginTop: 4,
     marginBottom: 20,
   },
   modalOverlay: {
@@ -974,6 +1006,11 @@ const styles = StyleSheet.create({
   csvInput: {
     height: 150,
     textAlignVertical: 'top',
+  },
+  csvHint: {
+    fontSize: 11,
+    color: '#666',
+    marginBottom: 6,
   },
   submitButton: {
     backgroundColor: '#f59e0b',
