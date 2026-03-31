@@ -1,122 +1,281 @@
-import { BendDataPoint, PredictionResult } from '../types';
+import { BendDataPoint, CorrectionResult } from '../types';
+import { MATERIALS_DB } from '../database/sampleData';
 
 /**
- * Linear interpolation between two values
+ * Linear interpolation between two points
  */
-function linearInterpolate(
-  x: number,
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number
-): number {
-  if (x2 === x1) return y1; // Avoid division by zero
-  return y1 + ((x - x1) * (y2 - y1)) / (x2 - x1);
+function interpolate(x: number, x1: number, y1: number, x2: number, y2: number): number {
+  if (x2 === x1) return y1;
+  return y1 + (y2 - y1) * (x - x1) / (x2 - x1);
 }
 
 /**
- * Predict bend correction and crown for a given bend length
+ * Quadratic extrapolation using Lagrange interpolation
+ * Fits a parabola through 3 points and evaluates at x
  */
-export function predictBendCorrection(
-  bendLength: number,
-  dataPoints: BendDataPoint[]
-): PredictionResult {
-  if (dataPoints.length === 0) {
-    throw new Error('No data points available for prediction');
+function quadraticExtrapolate(
+  x: number,
+  points: { x: number; y: number }[]
+): number {
+  const [p1, p2, p3] = points;
+
+  // Lagrange interpolation for quadratic
+  const L0 = ((x - p2.x) * (x - p3.x)) / ((p1.x - p2.x) * (p1.x - p3.x));
+  const L1 = ((x - p1.x) * (x - p3.x)) / ((p2.x - p1.x) * (p2.x - p3.x));
+  const L2 = ((x - p1.x) * (x - p2.x)) / ((p3.x - p1.x) * (p3.x - p2.x));
+
+  return p1.y * L0 + p2.y * L1 + p3.y * L2;
+}
+
+/**
+ * Linear regression extrapolation using least squares
+ */
+function linearRegressionExtrapolate(
+  x: number,
+  points: { x: number; y: number }[]
+): number {
+  const n = points.length;
+  if (n === 0) return 0;
+  if (n === 1) return points[0].y;
+
+  // Calculate means
+  let sumX = 0,
+    sumY = 0;
+  for (const p of points) {
+    sumX += p.x;
+    sumY += p.y;
+  }
+  const meanX = sumX / n;
+  const meanY = sumY / n;
+
+  // Calculate slope and intercept
+  let numerator = 0,
+    denominator = 0;
+  for (const p of points) {
+    numerator += (p.x - meanX) * (p.y - meanY);
+    denominator += (p.x - meanX) * (p.x - meanX);
   }
 
-  // Sort data points by bend length
-  const sorted = [...dataPoints].sort((a, b) => a.bendLength - b.bendLength);
+  if (denominator === 0) return meanY;
 
-  // Check if exact match exists
-  const exactMatch = sorted.find(p => p.bendLength === bendLength);
-  if (exactMatch) {
+  const slope = numerator / denominator;
+  const intercept = meanY - slope * meanX;
+
+  return slope * x + intercept;
+}
+
+/**
+ * Find bend correction using interpolation/extrapolation
+ */
+export function findCorrection(
+  materialKey: string,
+  flangeLength: number,
+  bendLength: number
+): CorrectionResult {
+  const material = MATERIALS_DB[materialKey];
+  if (!material) return { error: "Material not found" };
+
+  const flangeData = material.flanges[flangeLength];
+  if (!flangeData) {
+    // Flange length not in database
+    const availableFlanges = Object.keys(material.flanges)
+      .map(Number)
+      .sort((a, b) => a - b);
+    const minFlange = availableFlanges[0];
+
+    if (flangeLength < minFlange) {
+      return {
+        error: "BEND NOT POSSIBLE",
+        reason: `Flange height ${flangeLength}mm is too short. Minimum flange for this material is ${minFlange}mm.`,
+        notPossible: true
+      };
+    }
+    return { error: `No data for ${flangeLength}mm flange` };
+  }
+
+  // Filter out "not possible" entries for interpolation
+  const validData = flangeData.filter((d) => d.correction !== null);
+
+  // Check if ALL entries are "not possible"
+  if (validData.length === 0) {
     return {
-      bendLength,
-      estimatedBendCorrection: exactMatch.bendCorrection,
-      estimatedCrown: exactMatch.crown,
-      confidence: 'exact',
-      nearestDataPoints: {
-        below: exactMatch,
-        above: exactMatch,
-      },
+      error: "BEND NOT POSSIBLE",
+      reason: `${flangeLength}mm flange is too short for any bend length with this material.`,
+      notPossible: true
     };
   }
 
-  // Find the two nearest points for interpolation
-  let below: BendDataPoint | undefined;
-  let above: BendDataPoint | undefined;
+  // Check if requested bend length exceeds what this flange can handle
+  const maxPossibleBend = Math.max(...validData.map((d) => d.bendLength));
+  const notPossibleEntries = flangeData.filter((d) => d.correction === null);
 
-  for (let i = 0; i < sorted.length; i++) {
-    if (sorted[i].bendLength < bendLength) {
-      below = sorted[i];
-    } else if (sorted[i].bendLength > bendLength && !above) {
-      above = sorted[i];
+  if (notPossibleEntries.length > 0) {
+    const minNotPossible = Math.min(...notPossibleEntries.map((d) => d.bendLength));
+    if (bendLength >= minNotPossible) {
+      return {
+        error: "BEND NOT POSSIBLE",
+        reason: `${flangeLength}mm flange cannot hold a ${bendLength}mm bend. Maximum bend length for this flange is ${maxPossibleBend}mm.`,
+        notPossible: true,
+        maxBendLength: maxPossibleBend
+      };
+    }
+  }
+
+  // Check bounds
+  const minBend = Math.min(...validData.map((d) => d.bendLength));
+  const maxBend = Math.max(...validData.map((d) => d.bendLength));
+
+  // Extrapolate below minimum
+  if (bendLength < minBend) {
+    const point1 = validData[0];
+    const point2 = validData[1];
+    const point3 = validData[2];
+
+    if (point1 && point2 && point3) {
+      const correctionPoints = [
+        { x: point1.bendLength, y: point1.correction || 0 },
+        { x: point2.bendLength, y: point2.correction || 0 },
+        { x: point3.bendLength, y: point3.correction || 0 }
+      ];
+
+      const crownPointCount = Math.min(6, validData.length);
+      const crownPoints = validData
+        .slice(0, crownPointCount)
+        .map((d) => ({
+          x: d.bendLength,
+          y: d.crown || 0
+        }));
+
+      const extrapCorrection = quadraticExtrapolate(bendLength, correctionPoints);
+      const extrapCrown = linearRegressionExtrapolate(bendLength, crownPoints);
+
+      return {
+        correction: Math.round(Math.max(0, extrapCorrection) * 100) / 100,
+        crown: Math.round(Math.max(0, extrapCrown) * 100) / 100,
+        isExact: false,
+        isExtrapolated: true,
+        bendLength,
+        extrapolatedFrom: [point1.bendLength, point2.bendLength, point3.bendLength],
+        minTested: minBend,
+        warning: `Extrapolated below minimum tested (${minBend}mm)`
+      };
+    }
+
+    return {
+      error: `Below minimum tested (${minBend}mm)`,
+      suggestion: validData[0]
+    };
+  }
+
+  // Extrapolate above maximum
+  if (bendLength > maxBend) {
+    const point1 = validData[validData.length - 3];
+    const point2 = validData[validData.length - 2];
+    const point3 = validData[validData.length - 1];
+
+    if (point1 && point2 && point3) {
+      const correctionPoints = [
+        { x: point1.bendLength, y: point1.correction || 0 },
+        { x: point2.bendLength, y: point2.correction || 0 },
+        { x: point3.bendLength, y: point3.correction || 0 }
+      ];
+
+      const crownPointCount = Math.min(6, validData.length);
+      const crownPoints = validData
+        .slice(-crownPointCount)
+        .map((d) => ({
+          x: d.bendLength,
+          y: d.crown || 0
+        }));
+
+      const extrapCorrection = quadraticExtrapolate(bendLength, correctionPoints);
+      const extrapCrown = linearRegressionExtrapolate(bendLength, crownPoints);
+
+      return {
+        correction: Math.round(Math.max(0, extrapCorrection) * 100) / 100,
+        crown: Math.round(Math.max(0, extrapCrown) * 100) / 100,
+        isExact: false,
+        isExtrapolated: true,
+        extrapolatedAbove: true,
+        bendLength,
+        extrapolatedFrom: [point1.bendLength, point2.bendLength, point3.bendLength],
+        maxTested: maxBend,
+        warning: `Extrapolated above maximum tested (${maxBend}mm)`
+      };
+    }
+
+    return {
+      error: `Above maximum tested (${maxBend}mm)`,
+      suggestion: validData[validData.length - 1]
+    };
+  }
+
+  // Check for exact match
+  const exact = validData.find((d) => d.bendLength === bendLength);
+  if (exact) {
+    return {
+      correction: exact.correction || 0,
+      crown: exact.crown || 0,
+      isExact: true,
+      bendLength
+    };
+  }
+
+  // Interpolate between points
+  let lower: BendDataPoint | null = null;
+  let upper: BendDataPoint | null = null;
+  for (let i = 0; i < validData.length - 1; i++) {
+    if (validData[i].bendLength < bendLength && validData[i + 1].bendLength > bendLength) {
+      lower = validData[i];
+      upper = validData[i + 1];
       break;
     }
   }
 
-  // If beyond data range, use edge values
-  if (!below) {
-    const edge = sorted[0];
-    return {
+  if (lower && upper) {
+    const interpCorrection = interpolate(
       bendLength,
-      estimatedBendCorrection: edge.bendCorrection,
-      estimatedCrown: edge.crown,
-      confidence: 'interpolated',
-      nearestDataPoints: { below: edge, above: edge },
+      lower.bendLength,
+      lower.correction || 0,
+      upper.bendLength,
+      upper.correction || 0
+    );
+    const interpCrown = interpolate(
+      bendLength,
+      lower.bendLength,
+      lower.crown || 0,
+      upper.bendLength,
+      upper.crown || 0
+    );
+
+    return {
+      correction: Math.round(interpCorrection * 100) / 100,
+      crown: Math.round(interpCrown * 100) / 100,
+      isExact: false,
+      bendLength,
+      interpolatedBetween: [lower.bendLength, upper.bendLength],
+      lowerPoint: lower,
+      upperPoint: upper
     };
   }
 
-  if (!above) {
-    const edge = sorted[sorted.length - 1];
-    return {
-      bendLength,
-      estimatedBendCorrection: edge.bendCorrection,
-      estimatedCrown: edge.crown,
-      confidence: 'interpolated',
-      nearestDataPoints: { below: edge, above: edge },
-    };
-  }
-
-  // Interpolate between the two points
-  const interpolatedCorrection = linearInterpolate(
-    bendLength,
-    below.bendLength,
-    below.bendCorrection,
-    above.bendLength,
-    above.bendCorrection
-  );
-
-  const interpolatedCrown = linearInterpolate(
-    bendLength,
-    below.bendLength,
-    below.crown,
-    above.bendLength,
-    above.crown
-  );
-
-  return {
-    bendLength,
-    estimatedBendCorrection: interpolatedCorrection,
-    estimatedCrown: interpolatedCrown,
-    confidence: 'interpolated',
-    nearestDataPoints: { below, above },
-  };
+  return { error: "Could not interpolate" };
 }
 
 /**
- * Find the closest data point to a given bend length
+ * Get available flanges for a material
  */
-export function findClosestDataPoint(
-  bendLength: number,
-  dataPoints: BendDataPoint[]
-): BendDataPoint | null {
-  if (dataPoints.length === 0) return null;
+export function getAvailableFlanges(materialKey: string): number[] {
+  const material = MATERIALS_DB[materialKey];
+  if (!material) return [];
+  return Object.keys(material.flanges)
+    .map(Number)
+    .sort((a, b) => a - b);
+}
 
-  return dataPoints.reduce((closest, current) => {
-    const currentDist = Math.abs(current.bendLength - bendLength);
-    const closestDist = Math.abs(closest.bendLength - bendLength);
-    return currentDist < closestDist ? current : closest;
-  });
+/**
+ * Get all materials
+ */
+export function getMaterials() {
+  return MATERIALS_DB;
 }

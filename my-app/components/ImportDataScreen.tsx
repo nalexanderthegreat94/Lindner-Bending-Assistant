@@ -8,11 +8,9 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
-  Switch,
 } from 'react-native';
 import { bendDatabase } from '@/src/database';
 import { parseCSV } from '@/src/utils/csvParser';
-import { BendDataset } from '@/src/types';
 
 interface ImportFormState {
   csvContent: string;
@@ -124,7 +122,7 @@ export default function ImportDataScreen() {
         1. Format your test data as CSV with columns: bendLength, bendCorrection, crown{`\n`}
         2. Fill in the material details{`\n`}
         3. Paste the CSV data below{`\n`}
-        4. Tap "Import Data"
+        4. Tap {`"Import Data"`}
       </Text>
 
       <View style={styles.section}>

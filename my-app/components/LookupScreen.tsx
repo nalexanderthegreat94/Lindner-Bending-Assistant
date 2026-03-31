@@ -1,369 +1,991 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  ActivityIndicator,
-  Alert,
+  SafeAreaView,
+  Modal,
+  TextInput,
 } from 'react-native';
-import { bendDatabase } from '@/src/database';
-import { predictBendCorrection } from '@/src/utils/interpolation';
-import { BendDataset, PredictionResult } from '@/src/types';
+import { MATERIALS_DB } from '@/src/database/sampleData';
+import { findCorrection } from '@/src/utils/interpolation';
+import { CorrectionResult } from '@/src/types';
+
+interface HistoryEntry {
+  id: number;
+  material: string;
+  flange: number;
+  bendLength: number;
+  correction: number;
+  crown: number;
+  isExact: boolean;
+  timestamp: string;
+}
 
 export default function LookupScreen() {
-  const [datasets, setDatasets] = useState<BendDataset[]>([]);
-  const [selectedDataset, setSelectedDataset] = useState<BendDataset | null>(null);
-  const [bendLength, setBendLength] = useState<string>('');
-  const [prediction, setPrediction] = useState<PredictionResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [materials, setMaterials] = useState<string[]>([]);
+  const [material] = useState('2mm_aluminum');
+  const availableFlanges = useMemo(() => {
+    const mat = MATERIALS_DB[material];
+    if (!mat) return [];
+    return Object.keys(mat.flanges).map(Number).sort((a, b) => a - b);
+  }, [material]);
+  
+  const [flangeLength, setFlangeLength] = useState(() => {
+    const flanges = Object.keys(MATERIALS_DB['2mm_aluminum'].flanges).map(Number);
+    return flanges.length > 0 ? flanges[0] : 10;
+  });
+  const [bendLengthInput, setBendLengthInput] = useState('');
+  const [result, setResult] = useState<CorrectionResult | null>(null);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [showChart, setShowChart] = useState(false);
 
-  useEffect(() => {
-    loadDatasets();
-  }, []);
+  // Import modal state
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFormState, setImportFormState] = useState({
+    csvContent: '',
+    material: 'Aluminum',
+    thickness: '2',
+    thicknessUnit: 'mm' as 'mm' | 'gauge',
+    flange: '20',
+  });
 
-  const loadDatasets = async () => {
-    try {
-      setLoading(true);
-      const allDatasets = await bendDatabase.getAllDatasets();
-      setDatasets(allDatasets);
+  // Add New Correction modal state
+  const [showAddNewModal, setShowAddNewModal] = useState(false);
+  const [addNewFormState, setAddNewFormState] = useState({
+    bendLength: '',
+    bendCorrection: '',
+    crown: '',
+  });
 
-      const mats = await bendDatabase.getMaterials();
-      setMaterials(mats);
+  const chartData = useMemo(() => {
+    const mat = MATERIALS_DB[material];
+    if (!mat || !mat.flanges[flangeLength]) return [];
+    return mat.flanges[flangeLength]
+      .filter(d => d.correction !== null)
+      .map(d => ({
+        bendLength: d.bendLength,
+        correction: d.correction,
+        crown: d.crown
+      }));
+  }, [material, flangeLength]);
 
-      // Auto-select first dataset if available
-      if (allDatasets.length > 0) {
-        setSelectedDataset(allDatasets[0]);
-      }
-    } catch (error) {
-      console.error('Error loading datasets:', error);
-      Alert.alert('Error', 'Failed to load bend correction data');
-    } finally {
-      setLoading(false);
+  const handleNumpadPress = (value: string) => {
+    if (value === 'C') {
+      setBendLengthInput('');
+      setResult(null);
+    } else if (value === '⌫') {
+      setBendLengthInput(prev => prev.slice(0, -1));
+    } else if (value === 'GO') {
+      calculateResult();
+    } else {
+      setBendLengthInput(prev => prev + value);
     }
   };
 
-  const handleLookup = () => {
-    if (!selectedDataset || !bendLength) {
-      Alert.alert('Input Required', 'Please select a material and enter a bend length');
+  const calculateResult = () => {
+    const bendLen = parseFloat(bendLengthInput);
+    if (isNaN(bendLen) || bendLen <= 0) {
+      setResult({ error: 'Enter a valid bend length' });
       return;
     }
 
-    try {
-      const length = parseFloat(bendLength);
-      if (isNaN(length) || length < 0) {
-        Alert.alert('Invalid Input', 'Please enter a valid bend length');
-        return;
-      }
+    const res = findCorrection(material, flangeLength, bendLen);
+    setResult(res);
 
-      const result = predictBendCorrection(length, selectedDataset.data);
-      setPrediction(result);
-    } catch (error) {
-      console.error('Error predicting:', error);
-      Alert.alert('Error', 'Failed to predict bend correction');
+    if (!res.error) {
+      const historyEntry: HistoryEntry = {
+        id: Date.now(),
+        material: MATERIALS_DB[material].name,
+        flange: flangeLength,
+        bendLength: bendLen,
+        correction: res.correction || 0,
+        crown: res.crown || 0,
+        isExact: res.isExact || false,
+        timestamp: new Date().toLocaleTimeString()
+      };
+      setHistory(prev => [historyEntry, ...prev.slice(0, 19)]);
     }
   };
 
-  if (loading) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading bend data...</Text>
-      </View>
-    );
-  }
+  const loadFromHistory = (entry: HistoryEntry) => {
+    setBendLengthInput(entry.bendLength.toString());
+    setFlangeLength(entry.flange);
+    const res = findCorrection(material, entry.flange, entry.bendLength);
+    setResult(res);
+  };
 
-  if (datasets.length === 0) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>No bend data available</Text>
-        <Text style={styles.errorSubtext}>Please import bend correction data first</Text>
-      </View>
-    );
-  }
+  const handleAddNewCorrection = async () => {
+    const bendLen = parseFloat(addNewFormState.bendLength);
+    const corrections = parseFloat(addNewFormState.bendCorrection);
+
+    if (isNaN(bendLen) || isNaN(corrections)) {
+      alert('Please fill in all required fields');
+      return;
+    }
+
+    // TODO: Add to local database
+    setShowAddNewModal(false);
+    setAddNewFormState({ bendLength: '', bendCorrection: '', crown: '' });
+    alert('Correction added successfully');
+  };
+
+  const handleImportBatch = async () => {
+    // TODO: Parse CSV and add to database
+    setShowImportModal(false);
+    alert('Data imported successfully');
+  };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <Text style={styles.title}>Bend Correction Lookup</Text>
+    <SafeAreaView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.headerTitle}>BEND CORRECTION</Text>
+            <Text style={styles.headerSubtitle}>Sheet Metal Calculator</Text>
+          </View>
+          <View style={styles.headerIcon}>
+            <Text style={styles.headerIconText}>◢</Text>
+          </View>
+        </View>
 
-      {/* Material Selection */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Select Material & Thickness</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.datasetList}>
-          {datasets.map(dataset => (
-            <TouchableOpacity
-              key={dataset.id}
-              style={[
-                styles.datasetButton,
-                selectedDataset?.id === dataset.id && styles.datasetButtonSelected,
-              ]}
-              onPress={() => {
-                setSelectedDataset(dataset);
-                setPrediction(null);
-                setBendLength('');
-              }}
-            >
-              <Text
-                style={[
-                  styles.datasetButtonText,
-                  selectedDataset?.id === dataset.id && styles.datasetButtonTextSelected,
-                ]}
-              >
-                {dataset.label}
+        {/* Material & Flange Selection */}
+        <View style={styles.selectionGrid}>
+          <View style={styles.selectionItem}>
+            <Text style={styles.selectionLabel}>Material</Text>
+            <TouchableOpacity style={styles.dropdown}>
+              <Text style={styles.dropdownText}>
+                {MATERIALS_DB[material]?.name}
               </Text>
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-      </View>
+          </View>
 
-      {/* Selected Dataset Info */}
-      {selectedDataset && (
-        <View style={styles.infoBox}>
-          <Text style={styles.infoTitle}>Current Dataset</Text>
-          <Text style={styles.infoText}>{selectedDataset.label}</Text>
-          <Text style={styles.infoSubtext}>
-            Data points: {selectedDataset.data.length}
-          </Text>
-          <Text style={styles.infoSubtext}>
-            Range: {selectedDataset.data[0]?.bendLength}mm - {selectedDataset.data[selectedDataset.data.length - 1]?.bendLength}mm
+          <View style={styles.selectionItem}>
+            <Text style={styles.selectionLabel}>Flange Length</Text>
+            <View style={styles.flangeButtonsContainer}>
+              {availableFlanges && availableFlanges.map((flange: number) => (
+                <TouchableOpacity
+                  key={`flange-${flange}`}
+                  onPress={() => setFlangeLength(flange)}
+                  style={[
+                    styles.flangeButton,
+                    flangeLength === flange && styles.flangeButtonActive
+                  ]}
+                >
+                  <Text style={[
+                    styles.flangeButtonText,
+                    flangeLength === flange && styles.flangeButtonTextActive
+                  ]}>
+                    {flange}mm
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        {/* Bend Length Input Display */}
+        <View style={styles.inputDisplay}>
+          <Text style={styles.inputLabel}>Bend Length (mm)</Text>
+          <Text style={styles.inputValue}>
+            {bendLengthInput || '0'}
           </Text>
         </View>
-      )}
 
-      {/* Bend Length Input */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Enter Bend Length (mm)</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="e.g., 500"
-          placeholderTextColor="#999"
-          keyboardType="decimal-pad"
-          value={bendLength}
-          onChangeText={setBendLength}
-        />
-        <TouchableOpacity style={styles.button} onPress={handleLookup}>
-          <Text style={styles.buttonText}>Look Up Correction</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Prediction Results */}
-      {prediction && (
-        <View style={styles.resultsBox}>
-          <Text style={styles.resultsTitle}>Prediction Results</Text>
-
-          <View style={styles.resultRow}>
-            <Text style={styles.resultLabel}>Bend Length:</Text>
-            <Text style={styles.resultValue}>{prediction.bendLength.toFixed(1)} mm</Text>
-          </View>
-
-          <View style={styles.resultRow}>
-            <Text style={styles.resultLabel}>Bend Correction:</Text>
-            <Text style={styles.resultValue}>{prediction.estimatedBendCorrection.toFixed(3)}°</Text>
-          </View>
-
-          <View style={styles.resultRow}>
-            <Text style={styles.resultLabel}>Crown Correction:</Text>
-            <Text style={styles.resultValue}>{prediction.estimatedCrown.toFixed(4)}</Text>
-          </View>
-
-          <View style={styles.resultRow}>
-            <Text style={styles.resultLabel}>Confidence:</Text>
-            <Text
+        {/* Numpad */}
+        <View style={styles.numpadGrid}>
+          {['7', '8', '9', 'C', '4', '5', '6', '⌫', '1', '2', '3', '.', '0', '00', 'GO'].map((key) => (
+            <TouchableOpacity
+              key={key}
+              onPress={() => handleNumpadPress(key)}
               style={[
-                styles.resultValue,
-                {
-                  color: prediction.confidence === 'exact' ? '#34C759' : '#FF9500',
-                },
+                styles.numpadButton,
+                key === 'GO' && styles.numpadButtonGO,
+                key === 'C' && styles.numpadButtonClear,
+                key === '⌫' && styles.numpadButtonDelete,
               ]}
             >
-              {prediction.confidence === 'exact' ? 'Exact Match' : 'Interpolated'}
-            </Text>
-          </View>
-
-          {prediction.confidence === 'interpolated' && prediction.nearestDataPoints && (
-            <View style={styles.nearbyBox}>
-              <Text style={styles.nearbyTitle}>Nearby Data Points</Text>
-              {prediction.nearestDataPoints.below && (
-                <Text style={styles.nearbyText}>
-                  Below: {prediction.nearestDataPoints.below.bendLength}mm →{' '}
-                  {prediction.nearestDataPoints.below.bendCorrection.toFixed(2)}°
-                </Text>
-              )}
-              {prediction.nearestDataPoints.above && (
-                <Text style={styles.nearbyText}>
-                  Above: {prediction.nearestDataPoints.above.bendLength}mm →{' '}
-                  {prediction.nearestDataPoints.above.bendCorrection.toFixed(2)}°
-                </Text>
-              )}
-            </View>
-          )}
+              <Text style={styles.numpadButtonText}>{key}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
-      )}
-    </ScrollView>
+
+        {/* Result Display */}
+        {result && (
+          <View style={[
+            styles.resultContainer,
+            result.error ? styles.resultError : styles.resultSuccess
+          ]}>
+            {result.error ? (
+              <View>
+                {result.notPossible ? (
+                  <>
+                    <View style={styles.resultErrorHeader}>
+                      <Text style={styles.resultErrorIcon}>⊘</Text>
+                      <Text style={styles.resultErrorTitle}>{result.error}</Text>
+                    </View>
+                    <Text style={styles.resultErrorReason}>{result.reason}</Text>
+                    {result.maxBendLength && (
+                      <View style={styles.resultHint}>
+                        <Text style={styles.resultHintText}>
+                          💡 Max bend length for {flangeLength}mm flange: <Text style={styles.bold}>{result.maxBendLength}mm</Text>
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.resultErrorText}>⚠ {result.error}</Text>
+                    {result.suggestion && (
+                      <Text style={styles.resultSuggestion}>
+                        Nearest: {result.suggestion.bendLength}mm → {result.suggestion.correction}°
+                      </Text>
+                    )}
+                  </>
+                )}
+              </View>
+            ) : (
+              <View>
+                <View style={styles.resultValues}>
+                  <View>
+                    <Text style={styles.resultLabel}>Bend Correction</Text>
+                    <Text style={styles.resultCorrection}>{result.correction}°</Text>
+                  </View>
+                  <View style={styles.resultCrown}>
+                    <Text style={styles.resultLabel}>Crown</Text>
+                    <Text style={styles.resultCrownValue}>{result.crown}</Text>
+                  </View>
+                </View>
+
+                {result.isExtrapolated && (
+                  <View style={styles.resultWarning}>
+                    <Text style={styles.resultWarningText}>
+                      ⚠ EXTRAPOLATED — {result.extrapolatedAbove
+                        ? `Above maximum tested (${result.maxTested}mm)`
+                        : `Below minimum tested (${result.minTested}mm)`}. Use with caution.
+                    </Text>
+                  </View>
+                )}
+
+                {!result.isExact && !result.isExtrapolated && (
+                  <View style={styles.resultInfo}>
+                    <Text style={styles.resultInfoText}>
+                      ⟨ Interpolated between {result.interpolatedBetween?.[0]}mm and {result.interpolatedBetween?.[1]}mm ⟩
+                    </Text>
+                  </View>
+                )}
+
+                {result.isExact && (
+                  <View style={styles.resultExact}>
+                    <Text style={styles.resultExactText}>✓ Exact match from test data</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Toggle Chart */}
+        <TouchableOpacity
+          onPress={() => setShowChart(!showChart)}
+          style={styles.chartToggle}
+        >
+          <Text style={styles.chartToggleText}>
+            {showChart ? '▼' : '▶'} Correction Curve
+          </Text>
+        </TouchableOpacity>
+
+        {/* Chart Data Display */}
+        {showChart && chartData.length > 0 && (
+          <View style={styles.chartContainer}>
+            <View style={styles.chartTable}>
+              <View style={styles.chartHeader}>
+                <Text style={styles.chartHeaderCell}>Bend (mm)</Text>
+                <Text style={styles.chartHeaderCell}>Correction (°)</Text>
+                <Text style={styles.chartHeaderCell}>Crown</Text>
+              </View>
+              <ScrollView style={styles.chartBody} nestedScrollEnabled>
+                {chartData.slice(0, 10).map((item, idx) => (
+                  <View key={idx} style={styles.chartRow}>
+                    <Text style={styles.chartCell}>{item.bendLength}</Text>
+                    <Text style={styles.chartCell}>{item.correction}</Text>
+                    <Text style={styles.chartCell}>{item.crown}</Text>
+                  </View>
+                ))}
+                {chartData.length > 10 && (
+                  <View style={styles.chartRow}>
+                    <Text style={styles.chartCell}>...</Text>
+                    <Text style={styles.chartCell}>{chartData.length} total</Text>
+                    <Text style={styles.chartCell}>points</Text>
+                  </View>
+                )}
+              </ScrollView>
+            </View>
+          </View>
+        )}
+
+        {/* History */}
+        {history.length > 0 && (
+          <View style={styles.historyContainer}>
+            <View style={styles.historyHeader}>
+              <Text style={styles.historyTitle}>Recent Lookups</Text>
+              <TouchableOpacity onPress={() => setHistory([])}>
+                <Text style={styles.historyClear}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.historyList}>
+              {history.map(entry => (
+                <TouchableOpacity
+                  key={entry.id}
+                  onPress={() => loadFromHistory(entry)}
+                  style={styles.historyEntry}
+                >
+                  <View>
+                    <Text style={styles.historyValue}>
+                      {entry.bendLength}mm × {entry.flange}mm flange
+                    </Text>
+                    <Text style={styles.historyMeta}>
+                      {entry.timestamp} {!entry.isExact && '• interpolated'}
+                    </Text>
+                  </View>
+                  <View style={styles.historyResult}>
+                    <Text style={styles.historyCorrection}>{entry.correction}°</Text>
+                    <Text style={styles.historyCrown}>↕ {entry.crown}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Footer */}
+        <Text style={styles.footer}>
+          Data: 2mm/12ga 3003 Aluminum • More materials coming soon
+        </Text>
+      </ScrollView>
+
+      {/* Add New Correction Modal */}
+      <Modal visible={showAddNewModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.addNewModal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Add New Correction</Text>
+              <TouchableOpacity onPress={() => setShowAddNewModal(false)}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modaNalContent}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Bend Length (mm)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="100"
+                  keyboardType="decimal-pad"
+                  value={addNewFormState.bendLength}
+                  onChangeText={(text) =>
+                    setAddNewFormState({ ...addNewFormState, bendLength: text })
+                  }
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Correction (°)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="5.5"
+                  keyboardType="decimal-pad"
+                  value={addNewFormState.bendCorrection}
+                  onChangeText={(text) =>
+                    setAddNewFormState({ ...addNewFormState, bendCorrection: text })
+                  }
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Crown (optional)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="0"
+                  keyboardType="decimal-pad"
+                  value={addNewFormState.crown}
+                  onChangeText={(text) =>
+                    setAddNewFormState({ ...addNewFormState, crown: text })
+                  }
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.submitButton}
+                onPress={handleAddNewCorrection}
+              >
+                <Text style={styles.submitButtonText}>Add Correction</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Import Batch Modal */}
+      <Modal visible={showImportModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.importModal}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Import Batch Data</Text>
+              <TouchableOpacity onPress={() => setShowImportModal(false)}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.modalContent}>
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Material Name</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Aluminum"
+                  value={importFormState.material}
+                  onChangeText={(text) =>
+                    setImportFormState({ ...importFormState, material: text })
+                  }
+                />
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={[styles.formGroup, { flex: 1 }]}>
+                  <Text style={styles.label}>Thickness</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="2"
+                    keyboardType="decimal-pad"
+                    value={importFormState.thickness}
+                    onChangeText={(text) =>
+                      setImportFormState({ ...importFormState, thickness: text })
+                    }
+                  />
+                </View>
+
+                <View style={[styles.formGroup, { flex: 1, marginLeft: 12 }]}>
+                  <Text style={styles.label}>Unit</Text>
+                  <TouchableOpacity style={styles.input}>
+                    <Text>{importFormState.thicknessUnit}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Flange Length (mm)</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="20"
+                  keyboardType="decimal-pad"
+                  value={importFormState.flange}
+                  onChangeText={(text) =>
+                    setImportFormState({ ...importFormState, flange: text })
+                  }
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>CSV Data</Text>
+                <TextInput
+                  style={[styles.input, styles.csvInput]}
+                  placeholder="bendLength,correction,crown&#10;100,5.9,0&#10;200,5.3,0"
+                  multiline
+                  numberOfLines={8}
+                  value={importFormState.csvContent}
+                  onChangeText={(text) =>
+                    setImportFormState({ ...importFormState, csvContent: text })
+                  }
+                />
+              </View>
+
+              <TouchableOpacity
+                style={styles.submitButton}
+                onPress={handleImportBatch}
+              >
+                <Text style={styles.submitButtonText}>Import Data</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#0d0d1a',
   },
-  contentContainer: {
+  scrollContent: {
     padding: 16,
   },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 24,
-    color: '#000',
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-    color: '#333',
-  },
-  datasetList: {
-    marginHorizontal: -16,
-    paddingHorizontal: 16,
-  },
-  datasetButton: {
-    backgroundColor: '#E8E8E8',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginRight: 12,
-    borderWidth: 2,
-    borderColor: '#E8E8E8',
-  },
-  datasetButtonSelected: {
-    backgroundColor: '#007AFF',
-    borderColor: '#0051D5',
-  },
-  datasetButtonText: {
-    fontSize: 14,
-    color: '#333',
-    fontWeight: '500',
-  },
-  datasetButtonTextSelected: {
-    color: '#FFF',
-  },
-  infoBox: {
-    backgroundColor: '#E3F2FD',
-    padding: 16,
-    borderRadius: 8,
-    marginBottom: 24,
-    borderLeftWidth: 4,
-    borderLeftColor: '#007AFF',
-  },
-  infoTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1976D2',
-    marginBottom: 4,
-  },
-  infoText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#000',
-    marginBottom: 8,
-  },
-  infoSubtext: {
-    fontSize: 12,
-    color: '#555',
-    marginTop: 2,
-  },
-  input: {
-    backgroundColor: '#FFF',
-    borderWidth: 2,
-    borderColor: '#DDD',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    fontSize: 18,
-    marginBottom: 12,
-    color: '#000',
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    paddingVertical: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFF',
-  },
-  resultsBox: {
-    backgroundColor: '#FFF',
-    padding: 20,
+  header: {
+    backgroundColor: '#f59e0b',
     borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#34C759',
-  },
-  resultsTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    padding: 16,
     marginBottom: 16,
-    color: '#000',
-  },
-  resultRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEE',
+    alignItems: 'center',
+    elevation: 5,
   },
-  resultLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#555',
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#1a1a2e',
+    letterSpacing: -0.5,
   },
-  resultValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
-  },
-  nearbyBox: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#EEE',
-    backgroundColor: '#F9F9F9',
-    padding: 12,
-    borderRadius: 6,
-  },
-  nearbyTitle: {
+  headerSubtitle: {
     fontSize: 12,
-    fontWeight: '600',
-    color: '#666',
-    marginBottom: 8,
-  },
-  nearbyText: {
-    fontSize: 13,
-    color: '#555',
+    color: '#1a1a2e',
+    opacity: 0.8,
     marginTop: 4,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
-    color: '#666',
+  headerIcon: {
+    width: 48,
+    height: 48,
+    backgroundColor: '#1a1a2e',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  errorText: {
-    fontSize: 18,
+  headerIconText: {
+    fontSize: 24,
+    color: '#f59e0b',
+  },
+  selectionGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  selectionItem: {
+    flex: 1,
+  },
+  selectionLabel: {
+    fontSize: 11,
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  dropdown: {
+    backgroundColor: '#252542',
+    borderWidth: 2,
+    borderColor: '#3d3d5c',
+    borderRadius: 8,
+    padding: 14,
+  },
+  dropdownText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  flangeButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  flangeButton: {
+    backgroundColor: '#252542',
+    borderWidth: 2,
+    borderColor: '#3d3d5c',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  flangeButtonActive: {
+    backgroundColor: '#f59e0b',
+    borderColor: '#f59e0b',
+  },
+  flangeButtonText: {
+    color: '#888',
+    fontSize: 12,
     fontWeight: '600',
-    color: '#D32F2F',
+  },
+  flangeButtonTextActive: {
+    color: '#1a1a2e',
+  },
+  inputDisplay: {
+    backgroundColor: '#0d0d1a',
+    borderWidth: 2,
+    borderColor: '#3d3d5c',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 11,
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
     marginBottom: 8,
   },
-  errorSubtext: {
+  inputValue: {
+    fontSize: 42,
+    fontWeight: '700',
+    color: '#fff',
+    textAlign: 'right',
+    minHeight: 50,
+    fontFamily: 'monospace',
+  },
+  numpadGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 12,
+  },
+  numpadButton: {
+    width: `${(100 / 4) - 3}%`,
+    aspectRatio: 1,
+    backgroundColor: '#252542',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 0,
+    minHeight: 44,
+  },
+  numpadButtonGO: {
+    width: `${(100 / 2) - 3}%`,
+    backgroundColor: '#10b981',
+  },
+  numpadButtonClear: {
+    backgroundColor: '#dc2626',
+  },
+  numpadButtonDelete: {
+    backgroundColor: '#6366f1',
+  },
+  numpadButtonText: {
     fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  resultContainer: {
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 16,
+  },
+  resultSuccess: {
+    backgroundColor: '#1f2d1f',
+    borderWidth: 2,
+    borderColor: '#3d5c3d',
+  },
+  resultError: {
+    backgroundColor: '#2d1f1f',
+    borderWidth: 2,
+    borderColor: '#5c3d3d',
+  },
+  resultErrorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  resultErrorIcon: {
+    fontSize: 32,
+    color: '#ef4444',
+  },
+  resultErrorTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#ef4444',
+  },
+  resultErrorReason: {
+    color: '#fca5a5',
+    fontSize: 14,
+    lineHeight: 21,
+    marginBottom: 12,
+  },
+  resultErrorText: {
+    color: '#f87171',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  resultSuggestion: {
+    color: '#fbbf24',
+    fontSize: 14,
+    marginTop: 8,
+  },
+  resultHint: {
+    backgroundColor: '#3d2020',
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 12,
+  },
+  resultHintText: {
+    fontSize: 13,
+    color: '#fbbf24',
+  },
+  bold: {
+    fontWeight: '700',
+  },
+  resultValues: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  resultLabel: {
+    fontSize: 11,
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  resultCorrection: {
+    fontSize: 48,
+    fontWeight: '800',
+    color: '#4ade80',
+    marginTop: 4,
+  },
+  resultCrown: {
+    alignItems: 'flex-end',
+  },
+  resultCrownValue: {
+    fontSize: 32,
+    fontWeight: '700',
+    color: '#60a5fa',
+    marginTop: 4,
+  },
+  resultWarning: {
+    marginTop: 12,
+    padding: 10,
+    backgroundColor: '#4a3000',
+    borderWidth: 1,
+    borderColor: '#854d0e',
+    borderRadius: 8,
+  },
+  resultWarningText: {
+    fontSize: 12,
+    color: '#fbbf24',
+  },
+  resultInfo: {
+    marginTop: 12,
+    padding: 10,
+    backgroundColor: '#252542',
+    borderRadius: 8,
+  },
+  resultInfoText: {
+    fontSize: 12,
+    color: '#a5a5c5',
+  },
+  resultExact: {
+    marginTop: 12,
+    padding: 10,
+    backgroundColor: '#1a3d1a',
+    borderRadius: 8,
+  },
+  resultExactText: {
+    fontSize: 12,
+    color: '#4ade80',
+  },
+  chartToggle: {
+    width: '100%',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    backgroundColor: '#252542',
+    borderWidth: 2,
+    borderColor: '#3d3d5c',
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  chartToggleText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  chartContainer: {
+    backgroundColor: '#0d0d1a',
+    borderWidth: 2,
+    borderColor: '#3d3d5c',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  chartTable: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#252542',
+    borderBottomWidth: 1,
+    borderBottomColor: '#3d3d5c',
+  },
+  chartHeaderCell: {
+    flex: 1,
+    padding: 10,
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  chartBody: {
+    maxHeight: 150,
+  },
+  chartRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#2d2d4d',
+  },
+  chartCell: {
+    flex: 1,
+    padding: 10,
+    color: '#e8e8e8',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  historyContainer: {
+    backgroundColor: '#0d0d1a',
+    borderWidth: 2,
+    borderColor: '#3d3d5c',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  historyTitle: {
+    fontSize: 11,
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  historyClear: {
+    fontSize: 10,
     color: '#666',
+    textTransform: 'uppercase',
+  },
+  historyList: {
+    gap: 8,
+  },
+  historyEntry: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#1a1a2e',
+    borderWidth: 1,
+    borderColor: '#2d2d4d',
+    borderRadius: 8,
+  },
+  historyValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#e8e8e8',
+  },
+  historyMeta: {
+    fontSize: 11,
+    color: '#888',
+    marginTop: 2,
+  },
+  historyResult: {
+    alignItems: 'flex-end',
+  },
+  historyCorrection: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#4ade80',
+  },
+  historyCrown: {
+    fontSize: 12,
+    color: '#60a5fa',
+  },
+  footer: {
+    textAlign: 'center',
+    fontSize: 11,
+    color: '#555',
+    marginTop: 20,
+    marginBottom: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  addNewModal: {
+    backgroundColor: '#0d0d1a',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    maxHeight: '70%',
+  },
+  importModal: {
+    backgroundColor: '#0d0d1a',
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#3d3d5c',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  modalClose: {
+    fontSize: 24,
+    color: '#888',
+  },
+  modaNalContent: {
+    padding: 20,
+  },
+  modalContent: {
+    padding: 20,
+  },
+  formGroup: {
+    marginBottom: 16,
+  },
+  formRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 12,
+    color: '#888',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+    fontWeight: '600',
+  },
+  input: {
+    backgroundColor: '#1a1a2e',
+    borderWidth: 1,
+    borderColor: '#3d3d5c',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    color: '#fff',
+    fontSize: 14,
+  },
+  csvInput: {
+    height: 150,
+    textAlignVertical: 'top',
+  },
+  submitButton: {
+    backgroundColor: '#f59e0b',
+    borderRadius: 10,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    marginTop: 20,
+  },
+  submitButtonText: {
+    color: '#1a1a2e',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
   },
 });

@@ -3,34 +3,62 @@
  */
 export interface BendDataPoint {
   bendLength: number; // mm
-  bendCorrection: number; // degrees
-  crown: number; // mm or inches
+  correction: number | null; // degrees or null if not possible
+  crown: number | null; // mm or null if not possible
+  note?: string; // e.g., "not possible"
 }
 
 /**
- * A complete dataset for a specific material/thickness/flange combination
+ * Data for a specific flange length
  */
-export interface BendDataset {
-  id: string; // unique identifier
-  material: string; // e.g., "Aluminum"
-  thickness: number; // in mm
-  thicknessUnit: string; // "mm" or "gauge"
-  flange: number; // mm
-  label: string; // e.g., "2mm Aluminum 12ga (20mm flange)"
-  data: BendDataPoint[];
-  createdAt: number; // timestamp
+export interface FlangeData {
+  [flangeLength: number]: BendDataPoint[];
 }
 
 /**
- * Prediction result
+ * Complete material definition with multiple flange options
  */
-export interface PredictionResult {
-  bendLength: number;
-  estimatedBendCorrection: number;
-  estimatedCrown: number;
-  confidence: "exact" | "interpolated"; // exact if matches a data point, interpolated if between points
-  nearestDataPoints?: {
-    below?: BendDataPoint;
-    above?: BendDataPoint;
-  };
+export interface Material {
+  name: string;
+  thickness: number;
+  unit: "mm" | "gauge";
+  flanges: FlangeData;
+}
+
+/**
+ * Materials database
+ */
+export interface MaterialsDatabase {
+  [materialKey: string]: Material;
+}
+
+/**
+ * Prediction result with detailed metadata
+ */
+export interface CorrectionResult {
+  // Success case
+  correction?: number;
+  crown?: number;
+  bendLength?: number;
+  isExact?: boolean;
+  
+  // Interpolation metadata
+  interpolatedBetween?: [number, number];
+  lowerPoint?: BendDataPoint;
+  upperPoint?: BendDataPoint;
+  
+  // Extrapolation metadata
+  isExtrapolated?: boolean;
+  extrapolatedAbove?: boolean;
+  extrapolatedFrom?: number[];
+  minTested?: number;
+  maxTested?: number;
+  warning?: string;
+  
+  // Error case
+  error?: string;
+  reason?: string;
+  notPossible?: boolean;
+  maxBendLength?: number;
+  suggestion?: BendDataPoint;
 }
