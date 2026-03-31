@@ -43,10 +43,16 @@ function mergeDB(base: MaterialsDatabase, additions: MaterialsDatabase): Materia
   return result;
 }
 
+interface MaterialMeta {
+  name: string;
+  thickness: number;
+  unit: 'mm' | 'gauge';
+}
+
 interface BendDataContextValue {
   db: MaterialsDatabase;
-  addDataPoint: (materialKey: string, flange: number, point: BendDataPoint) => Promise<void>;
-  importCSV: (materialKey: string, flange: number, csvText: string) => Promise<number>;
+  addDataPoint: (materialKey: string, flange: number, point: BendDataPoint, meta?: MaterialMeta) => Promise<void>;
+  importCSV: (materialKey: string, flange: number, csvText: string, meta?: MaterialMeta) => Promise<number>;
 }
 
 const BendDataContext = createContext<BendDataContextValue | null>(null);
@@ -74,15 +80,15 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const addDataPoint = useCallback(
-    async (materialKey: string, flange: number, point: BendDataPoint) => {
+    async (materialKey: string, flange: number, point: BendDataPoint, meta?: MaterialMeta) => {
       const next: MaterialsDatabase = JSON.parse(JSON.stringify(userAdditions));
 
       if (!next[materialKey]) {
         const base = MATERIALS_DB[materialKey];
         next[materialKey] = {
-          name: base?.name || materialKey,
-          thickness: base?.thickness || 0,
-          unit: base?.unit || 'mm',
+          name: meta?.name || base?.name || materialKey,
+          thickness: meta?.thickness ?? base?.thickness ?? 0,
+          unit: meta?.unit || base?.unit || 'mm',
           flanges: {},
         };
       }
@@ -106,7 +112,7 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
   );
 
   const importCSV = useCallback(
-    async (materialKey: string, flange: number, csvText: string): Promise<number> => {
+    async (materialKey: string, flange: number, csvText: string, meta?: MaterialMeta): Promise<number> => {
       const lines = csvText.trim().split('\n');
       const points: BendDataPoint[] = [];
 
@@ -135,9 +141,9 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
       if (!next[materialKey]) {
         const base = MATERIALS_DB[materialKey];
         next[materialKey] = {
-          name: base?.name || materialKey,
-          thickness: base?.thickness || 0,
-          unit: base?.unit || 'mm',
+          name: meta?.name || base?.name || materialKey,
+          thickness: meta?.thickness ?? base?.thickness ?? 0,
+          unit: meta?.unit || base?.unit || 'mm',
           flanges: {},
         };
       }

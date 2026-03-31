@@ -4,11 +4,11 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   SafeAreaView,
 } from 'react-native';
 import { useBendData } from '@/src/context/BendDataContext';
 import { BendDataPoint } from '@/src/types';
+import DropdownPicker from '@/components/ui/DropdownPicker';
 
 const MATERIAL_KEY = '2mm_aluminum';
 
@@ -55,32 +55,12 @@ export default function DataBrowserScreen() {
 
       {/* Flange selector */}
       <View style={styles.flangeSection}>
-        <Text style={styles.sectionLabel}>Flange Length</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.flangeScrollContent}
-        >
-          {availableFlanges.map(flange => (
-            <TouchableOpacity
-              key={flange}
-              onPress={() => setSelectedFlange(flange)}
-              style={[
-                styles.flangeTab,
-                selectedFlange === flange && styles.flangeTabActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.flangeTabText,
-                  selectedFlange === flange && styles.flangeTabTextActive,
-                ]}
-              >
-                {flange}mm
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <Text style={styles.sectionLabel}>Flange Height</Text>
+        <DropdownPicker
+          options={availableFlanges.map(f => ({ label: `${f}mm`, value: f.toString() }))}
+          selectedValue={selectedFlange.toString()}
+          onSelect={(val) => setSelectedFlange(Number(val))}
+        />
       </View>
 
       {/* Stats bar */}
@@ -211,30 +191,6 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 8,
-  },
-  flangeScrollContent: {
-    gap: 8,
-    paddingRight: 4,
-  },
-  flangeTab: {
-    backgroundColor: '#252542',
-    borderWidth: 2,
-    borderColor: '#3d3d5c',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  flangeTabActive: {
-    backgroundColor: '#f59e0b',
-    borderColor: '#f59e0b',
-  },
-  flangeTabText: {
-    color: '#888',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  flangeTabTextActive: {
-    color: '#1a1a2e',
   },
   statsBar: {
     flexDirection: 'row',

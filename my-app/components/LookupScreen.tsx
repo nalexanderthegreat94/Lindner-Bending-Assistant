@@ -12,6 +12,7 @@ import {
 import { useBendData } from '@/src/context/BendDataContext';
 import { findCorrection } from '@/src/utils/interpolation';
 import { CorrectionResult } from '@/src/types';
+import DropdownPicker from '@/components/ui/DropdownPicker';
 
 interface HistoryEntry {
   id: number;
@@ -49,11 +50,37 @@ export default function LookupScreen() {
 
   // Add New Correction modal state
   const [showAddNewModal, setShowAddNewModal] = useState(false);
-  const [addNewFormState, setAddNewFormState] = useState({
+
+  const getDefaultAddNewState = () => ({
+    selectedMaterialKey: material,
+    newMaterialName: '',
+    newMaterialThickness: '',
+    newMaterialUnit: 'mm' as 'mm' | 'gauge',
+    selectedFlange: flangeLength.toString(),
+    newFlangeHeight: '',
     bendLength: '',
     bendCorrection: '',
     crown: '',
   });
+
+  const [addNewFormState, setAddNewFormState] = useState(getDefaultAddNewState);
+
+  const materialOptions = useMemo(() => [
+    ...Object.keys(db).map(key => ({ label: db[key].name, value: key })),
+    { label: '＋ New Material...', value: '__new__' },
+  ], [db]);
+
+  const addFormFlangeOptions = useMemo(() => {
+    const key = addNewFormState.selectedMaterialKey;
+    if (key === '__new__') {
+      return [{ label: '＋ New Flange Height...', value: '__new__' }];
+    }
+    const flanges = Object.keys(db[key]?.flanges || {}).map(Number).sort((a, b) => a - b);
+    return [
+      ...flanges.map(f => ({ label: `${f}mm`, value: f.toString() })),
+      { label: '＋ New Flange Height...', value: '__new__' },
+    ];
+  }, [db, addNewFormState.selectedMaterialKey]);
 
   const chartData = useMemo(() => {
     const mat = db[material];
@@ -122,17 +149,40 @@ export default function LookupScreen() {
       return;
     }
 
+    // Resolve material
+    let matKey: string;
+    let matMeta: { name: string; thickness: number; unit: 'mm' | 'gauge' } | undefined;
+    if (addNewFormState.selectedMaterialKey === '__new__') {
+      const name = addNewFormState.newMaterialName.trim();
+      const thickness = parseFloat(addNewFormState.newMaterialThickness);
+      if (!name) { alert('Please enter a material name'); return; }
+      if (isNaN(thickness) || thickness <= 0) { alert('Please enter a valid thickness'); return; }
+      matKey = name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + thickness + addNewFormState.newMaterialUnit;
+      matMeta = { name, thickness, unit: addNewFormState.newMaterialUnit };
+    } else {
+      matKey = addNewFormState.selectedMaterialKey;
+    }
+
+    // Resolve flange height
+    let flange: number;
+    if (addNewFormState.selectedFlange === '__new__') {
+      flange = parseFloat(addNewFormState.newFlangeHeight);
+      if (isNaN(flange) || flange <= 0) { alert('Please enter a valid flange height'); return; }
+    } else {
+      flange = Number(addNewFormState.selectedFlange);
+    }
+
     try {
-      await addDataPoint(material, flangeLength, {
+      await addDataPoint(matKey, flange, {
         bendLength: bendLen,
         correction,
         crown: isNaN(crown) ? 0 : crown,
-      });
+      }, matMeta);
       setShowAddNewModal(false);
-      setAddNewFormState({ bendLength: '', bendCorrection: '', crown: '' });
-      alert(`Added ${bendLen}mm → ${correction}° to ${flangeLength}mm flange`);
+      setAddNewFormState(getDefaultAddNewState());
+      alert(`Saved: ${bendLen}mm → ${correction}° for ${flange}mm flange`);
     } catch {
-      alert('Failed to save correction. Please try again.');
+      alert('Failed to save. Please try again.');
     }
   };
 
@@ -179,26 +229,12 @@ export default function LookupScreen() {
           </View>
 
           <View style={styles.selectionItem}>
-            <Text style={styles.selectionLabel}>Flange Length</Text>
-            <View style={styles.flangeButtonsContainer}>
-              {availableFlanges && availableFlanges.map((flange: number) => (
-                <TouchableOpacity
-                  key={`flange-${flange}`}
-                  onPress={() => setFlangeLength(flange)}
-                  style={[
-                    styles.flangeButton,
-                    flangeLength === flange && styles.flangeButtonActive
-                  ]}
-                >
-                  <Text style={[
-                    styles.flangeButtonText,
-                    flangeLength === flange && styles.flangeButtonTextActive
-                  ]}>
-                    {flange}mm
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <Text style={styles.selectionLabel}>Flange Height</Text>
+            <DropdownPicker
+              options={availableFlanges.map(f => ({ label: `${f}mm`, value: f.toString() }))}
+              selectedValue={flangeLength.toString()}
+              onSelect={(val) => setFlangeLength(Number(val))}
+            />
           </View>
         </View>
 
@@ -381,7 +417,10 @@ export default function LookupScreen() {
         <View style={styles.manageDataRow}>
           <TouchableOpacity
             style={styles.manageButton}
-            onPress={() => setShowAddNewModal(true)}
+            onPress={() => {
+              setAddNewFormState(getDefaultAddNewState());
+              setShowAddNewModal(true);
+            }}
           >
             <Text style={styles.manageButtonText}>+ Add Correction</Text>
           </TouchableOpacity>
@@ -407,13 +446,96 @@ export default function LookupScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.addNewModal}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Correction — {flangeLength}mm flange</Text>
+              <Text style={styles.modalTitle}>Add Correction</Text>
               <TouchableOpacity onPress={() => setShowAddNewModal(false)}>
                 <Text style={styles.modalClose}>✕</Text>
               </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={styles.modaNalContent}>
+              {/* Material */}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Material</Text>
+                <DropdownPicker
+                  options={materialOptions}
+                  selectedValue={addNewFormState.selectedMaterialKey}
+                  onSelect={(val) => {
+                    const defaultFlange = val === '__new__'
+                      ? '__new__'
+                      : (Object.keys(db[val]?.flanges || {}).map(Number).sort((a, b) => a - b)[0]?.toString() ?? '__new__');
+                    setAddNewFormState({ ...addNewFormState, selectedMaterialKey: val, selectedFlange: defaultFlange });
+                  }}
+                />
+              </View>
+
+              {addNewFormState.selectedMaterialKey === '__new__' && (
+                <>
+                  <View style={styles.formGroup}>
+                    <Text style={styles.label}>Material Name</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="e.g. 3mm Steel"
+                      value={addNewFormState.newMaterialName}
+                      onChangeText={(text) => setAddNewFormState({ ...addNewFormState, newMaterialName: text })}
+                    />
+                  </View>
+                  <View style={styles.formRow}>
+                    <View style={[styles.formGroup, { flex: 1 }]}>
+                      <Text style={styles.label}>Thickness</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="3"
+                        keyboardType="decimal-pad"
+                        value={addNewFormState.newMaterialThickness}
+                        onChangeText={(text) => setAddNewFormState({ ...addNewFormState, newMaterialThickness: text })}
+                      />
+                    </View>
+                    <View style={[styles.formGroup, { flex: 1, marginLeft: 12 }]}>
+                      <Text style={styles.label}>Unit</Text>
+                      <View style={styles.unitToggle}>
+                        {(['mm', 'gauge'] as const).map(u => (
+                          <TouchableOpacity
+                            key={u}
+                            style={[styles.unitButton, addNewFormState.newMaterialUnit === u && styles.unitButtonActive]}
+                            onPress={() => setAddNewFormState({ ...addNewFormState, newMaterialUnit: u })}
+                          >
+                            <Text style={[styles.unitButtonText, addNewFormState.newMaterialUnit === u && styles.unitButtonTextActive]}>
+                              {u}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  </View>
+                </>
+              )}
+
+              {/* Flange height */}
+              <View style={styles.formGroup}>
+                <Text style={styles.label}>Flange Height</Text>
+                <DropdownPicker
+                  options={addFormFlangeOptions}
+                  selectedValue={addNewFormState.selectedFlange}
+                  onSelect={(val) => setAddNewFormState({ ...addNewFormState, selectedFlange: val })}
+                />
+              </View>
+
+              {addNewFormState.selectedFlange === '__new__' && (
+                <View style={styles.formGroup}>
+                  <Text style={styles.label}>New Flange Height (mm)</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="e.g. 25"
+                    keyboardType="decimal-pad"
+                    value={addNewFormState.newFlangeHeight}
+                    onChangeText={(text) => setAddNewFormState({ ...addNewFormState, newFlangeHeight: text })}
+                  />
+                </View>
+              )}
+
+              <View style={styles.formDivider} />
+
+              {/* Data point */}
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Bend Length (mm)</Text>
                 <TextInput
@@ -421,9 +543,7 @@ export default function LookupScreen() {
                   placeholder="100"
                   keyboardType="decimal-pad"
                   value={addNewFormState.bendLength}
-                  onChangeText={(text) =>
-                    setAddNewFormState({ ...addNewFormState, bendLength: text })
-                  }
+                  onChangeText={(text) => setAddNewFormState({ ...addNewFormState, bendLength: text })}
                 />
               </View>
 
@@ -434,9 +554,7 @@ export default function LookupScreen() {
                   placeholder="5.5"
                   keyboardType="decimal-pad"
                   value={addNewFormState.bendCorrection}
-                  onChangeText={(text) =>
-                    setAddNewFormState({ ...addNewFormState, bendCorrection: text })
-                  }
+                  onChangeText={(text) => setAddNewFormState({ ...addNewFormState, bendCorrection: text })}
                 />
               </View>
 
@@ -447,9 +565,7 @@ export default function LookupScreen() {
                   placeholder="0"
                   keyboardType="decimal-pad"
                   value={addNewFormState.crown}
-                  onChangeText={(text) =>
-                    setAddNewFormState({ ...addNewFormState, crown: text })
-                  }
+                  onChangeText={(text) => setAddNewFormState({ ...addNewFormState, crown: text })}
                 />
               </View>
 
@@ -477,26 +593,12 @@ export default function LookupScreen() {
 
             <ScrollView contentContainerStyle={styles.modalContent}>
               <View style={styles.formGroup}>
-                <Text style={styles.label}>Flange Length</Text>
-                <View style={styles.flangeButtonsContainer}>
-                  {availableFlanges.map((flange: number) => (
-                    <TouchableOpacity
-                      key={`import-flange-${flange}`}
-                      onPress={() => setImportFormState({ ...importFormState, flange })}
-                      style={[
-                        styles.flangeButton,
-                        importFormState.flange === flange && styles.flangeButtonActive,
-                      ]}
-                    >
-                      <Text style={[
-                        styles.flangeButtonText,
-                        importFormState.flange === flange && styles.flangeButtonTextActive,
-                      ]}>
-                        {flange}mm
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
+                <Text style={styles.label}>Flange Height</Text>
+                <DropdownPicker
+                  options={availableFlanges.map(f => ({ label: `${f}mm`, value: f.toString() }))}
+                  selectedValue={importFormState.flange.toString()}
+                  onSelect={(val) => setImportFormState({ ...importFormState, flange: Number(val) })}
+                />
               </View>
 
               <View style={styles.formGroup}>
@@ -946,7 +1048,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0d0d1a',
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
-    maxHeight: '70%',
+    maxHeight: '90%',
   },
   importModal: {
     backgroundColor: '#0d0d1a',
@@ -1024,5 +1126,34 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
+  },
+  formDivider: {
+    height: 1,
+    backgroundColor: '#3d3d5c',
+    marginBottom: 16,
+  },
+  unitToggle: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: '#3d3d5c',
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  unitButton: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    backgroundColor: '#1a1a2e',
+  },
+  unitButtonActive: {
+    backgroundColor: '#f59e0b',
+  },
+  unitButtonText: {
+    color: '#888',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  unitButtonTextActive: {
+    color: '#1a1a2e',
   },
 });
