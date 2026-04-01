@@ -8,6 +8,7 @@ import {
   SafeAreaView,
   Modal,
   TextInput,
+  useWindowDimensions,
 } from 'react-native';
 import { useBendData } from '@/src/context/BendDataContext';
 import { findCorrection } from '@/src/utils/interpolation';
@@ -29,6 +30,8 @@ interface HistoryEntry {
 export default function LookupScreen() {
   const { db, addDataPoint } = useBendData();
   const [material] = useState('2mm_aluminum');
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+  const isLandscape = screenWidth > screenHeight;
 
   const availableFlanges = useMemo(() => {
     const mat = db[material];
@@ -41,8 +44,6 @@ export default function LookupScreen() {
   const [result, setResult] = useState<CorrectionResult | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showChart, setShowChart] = useState(false);
-
-  // Add New Correction modal state
   const [showAddNewModal, setShowAddNewModal] = useState(false);
 
   const getDefaultAddNewState = () => ({
@@ -81,11 +82,7 @@ export default function LookupScreen() {
     if (!mat || !mat.flanges[flangeLength]) return [];
     return mat.flanges[flangeLength]
       .filter(d => d.correction !== null)
-      .map(d => ({
-        bendLength: d.bendLength,
-        correction: d.correction,
-        crown: d.crown
-      }));
+      .map(d => ({ bendLength: d.bendLength, correction: d.correction, crown: d.crown }));
   }, [db, material, flangeLength]);
 
   const handleNumpadPress = (value: string) => {
@@ -107,10 +104,8 @@ export default function LookupScreen() {
       setResult({ error: 'Enter a valid bend length' });
       return;
     }
-
     const res = findCorrection(material, flangeLength, bendLen, db);
     setResult(res);
-
     if (!res.error) {
       const historyEntry: HistoryEntry = {
         id: Date.now(),
@@ -120,7 +115,7 @@ export default function LookupScreen() {
         correction: res.correction || 0,
         crown: res.crown || 0,
         isExact: res.isExact || false,
-        timestamp: new Date().toLocaleTimeString()
+        timestamp: new Date().toLocaleTimeString(),
       };
       setHistory(prev => [historyEntry, ...prev.slice(0, 19)]);
     }
@@ -137,13 +132,10 @@ export default function LookupScreen() {
     const bendLen = parseFloat(addNewFormState.bendLength);
     const correction = parseFloat(addNewFormState.bendCorrection);
     const crown = addNewFormState.crown ? parseFloat(addNewFormState.crown) : 0;
-
     if (isNaN(bendLen) || bendLen <= 0 || isNaN(correction)) {
       alert('Please enter a valid bend length and correction');
       return;
     }
-
-    // Resolve material
     let matKey: string;
     let matMeta: { name: string; thickness: number; unit: 'mm' | 'gauge' } | undefined;
     if (addNewFormState.selectedMaterialKey === '__new__') {
@@ -156,8 +148,6 @@ export default function LookupScreen() {
     } else {
       matKey = addNewFormState.selectedMaterialKey;
     }
-
-    // Resolve flange height
     let flange: number;
     if (addNewFormState.selectedFlange === '__new__') {
       flange = parseFloat(addNewFormState.newFlangeHeight);
@@ -165,7 +155,6 @@ export default function LookupScreen() {
     } else {
       flange = Number(addNewFormState.selectedFlange);
     }
-
     try {
       await addDataPoint(matKey, flange, {
         bendLength: bendLen,
@@ -180,155 +169,141 @@ export default function LookupScreen() {
     }
   };
 
-  return (
-    <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.headerTitle}>BEND CORRECTION</Text>
-            <Text style={styles.headerSubtitle}>Sheet Metal Calculator</Text>
-          </View>
-          <View style={styles.headerIcon}>
-            <Text style={styles.headerIconText}>◢</Text>
-          </View>
+  // ─── Render sections ──────────────────────────────────────────────────────
+
+  const controlsSection = (
+    <>
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Schroeder Bend Calculator</Text>
+        <View style={styles.headerIcon}>
+          <Text style={styles.headerIconText}>◢</Text>
         </View>
+      </View>
 
-        {/* Material & Flange Selection */}
-        <View style={styles.selectionGrid}>
-          <View style={styles.selectionItem}>
-            <Text style={styles.selectionLabel}>Material</Text>
-            <TouchableOpacity style={styles.dropdown}>
-              <Text style={styles.dropdownText}>
-                {db[material]?.name}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.selectionItem}>
-            <Text style={styles.selectionLabel}>Flange Height</Text>
-            <DropdownPicker
-              options={availableFlanges.map(f => ({ label: `${f}mm`, value: f.toString() }))}
-              selectedValue={flangeLength.toString()}
-              onSelect={(val) => setFlangeLength(Number(val))}
-            />
-          </View>
-        </View>
-
-        {/* Bend Length Input Display */}
-        <View style={styles.inputDisplay}>
-          <Text style={styles.inputLabel}>Bend Length (mm)</Text>
-          <Text style={styles.inputValue}>
-            {bendLengthInput || '0'}
-          </Text>
-        </View>
-
-        {/* Numpad */}
-        <View style={styles.numpadContainer}>
-          {[['7','8','9'],['4','5','6'],['1','2','3'],['C','0','⌫']].map((row, rowIdx) => (
-            <View key={rowIdx} style={styles.numpadRow}>
-              {row.map((key) => (
-                <TouchableOpacity
-                  key={key}
-                  onPress={() => handleNumpadPress(key)}
-                  style={[
-                    styles.numpadButton,
-                    key === 'C' && styles.numpadButtonClear,
-                    key === '⌫' && styles.numpadButtonDelete,
-                  ]}
-                >
-                  <Text style={styles.numpadButtonText}>{key}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          ))}
-          <TouchableOpacity
-            onPress={() => handleNumpadPress('GO')}
-            style={styles.numpadButtonCalculate}
-          >
-            <Text style={styles.numpadButtonCalculateText}>Calculate</Text>
+      {/* Material & Flange Selection */}
+      <View style={styles.selectionGrid}>
+        <View style={styles.selectionItem}>
+          <Text style={styles.selectionLabel}>Material</Text>
+          <TouchableOpacity style={styles.dropdown}>
+            <Text style={styles.dropdownText}>{db[material]?.name}</Text>
           </TouchableOpacity>
         </View>
+        <View style={styles.selectionItem}>
+          <Text style={styles.selectionLabel}>Flange Height</Text>
+          <DropdownPicker
+            options={availableFlanges.map(f => ({ label: `${f}mm`, value: f.toString() }))}
+            selectedValue={flangeLength.toString()}
+            onSelect={(val) => setFlangeLength(Number(val))}
+          />
+        </View>
+      </View>
 
-        {/* Result Display */}
-        {result && (
-          <View style={[
-            styles.resultContainer,
-            result.error ? styles.resultError : styles.resultSuccess
-          ]}>
-            {result.error ? (
-              <View>
-                {result.notPossible ? (
-                  <>
-                    <View style={styles.resultErrorHeader}>
-                      <Text style={styles.resultErrorIcon}>⊘</Text>
-                      <Text style={styles.resultErrorTitle}>{result.error}</Text>
-                    </View>
-                    {result.maxBendLength && (
-                      <View style={styles.resultHint}>
-                        <Text style={styles.resultHintText}>
-                          Max bend length for {flangeLength}mm flange:{' '}
-                          <Text style={styles.bold}>{result.maxBendLength}mm</Text>
-                        </Text>
-                      </View>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Text style={styles.resultErrorText}>⚠ {result.error}</Text>
-                    {result.suggestion && (
-                      <Text style={styles.resultSuggestion}>
-                        Nearest: {result.suggestion.bendLength}mm → {result.suggestion.correction}°
-                      </Text>
-                    )}
-                  </>
-                )}
-              </View>
-            ) : (
-              <View>
-                <View style={styles.resultValues}>
-                  <View>
-                    <Text style={styles.resultLabel}>Bend Correction</Text>
-                    <Text style={styles.resultCorrection}>{result.correction}°</Text>
-                  </View>
-                  <View style={styles.resultCrown}>
-                    <Text style={styles.resultLabel}>Crown</Text>
-                    <Text style={styles.resultCrownValue}>{result.crown}</Text>
-                  </View>
-                </View>
+      {/* Bend Length Input Display */}
+      <View style={styles.inputDisplay}>
+        <Text style={styles.inputLabel}>Bend Length (mm)</Text>
+        <Text style={styles.inputValue}>{bendLengthInput || '0'}</Text>
+      </View>
 
-                {result.isExtrapolated && (
-                  <View style={styles.resultWarning}>
-                    <Text style={styles.resultWarningText}>
-                      ⚠ EXTRAPOLATED — {result.extrapolatedAbove
-                        ? `Above maximum tested (${result.maxTested}mm)`
-                        : `Below minimum tested (${result.minTested}mm)`}. Use with caution.
-                    </Text>
-                  </View>
-                )}
-
-                {result.isExact && (
-                  <View style={styles.resultExact}>
-                    <Text style={styles.resultExactText}>✓ Exact match from test data</Text>
-                  </View>
-                )}
-              </View>
-            )}
+      {/* Numpad */}
+      <View style={styles.numpadContainer}>
+        {[['7','8','9'],['4','5','6'],['1','2','3'],['C','0','⌫']].map((row, rowIdx) => (
+          <View key={rowIdx} style={styles.numpadRow}>
+            {row.map((key) => (
+              <TouchableOpacity
+                key={key}
+                onPress={() => handleNumpadPress(key)}
+                style={[
+                  styles.numpadButton,
+                  key === 'C' && styles.numpadButtonClear,
+                  key === '⌫' && styles.numpadButtonDelete,
+                ]}
+              >
+                <Text style={styles.numpadButtonText}>{key}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        )}
-
-        {/* Toggle Chart */}
+        ))}
         <TouchableOpacity
-          onPress={() => setShowChart(!showChart)}
-          style={styles.chartToggle}
+          onPress={() => handleNumpadPress('GO')}
+          style={styles.numpadButtonCalculate}
         >
-          <Text style={styles.chartToggleText}>
-            {showChart ? '▼' : '▶'} Correction Curve
-          </Text>
+          <Text style={styles.numpadButtonCalculateText}>Calculate</Text>
         </TouchableOpacity>
+      </View>
 
-        {/* Interactive Chart */}
-        {showChart && chartData.length > 0 && (
+      {/* Result Display */}
+      {result && (
+        <View style={[
+          styles.resultContainer,
+          result.error ? styles.resultError : styles.resultSuccess,
+        ]}>
+          {result.error ? (
+            <View>
+              {result.notPossible ? (
+                <>
+                  <View style={styles.resultErrorHeader}>
+                    <Text style={styles.resultErrorIcon}>⊘</Text>
+                    <Text style={styles.resultErrorTitle}>{result.error}</Text>
+                  </View>
+                  {result.maxBendLength && (
+                    <View style={styles.resultHint}>
+                      <Text style={styles.resultHintText}>
+                        Max bend length for {flangeLength}mm flange:{' '}
+                        <Text style={styles.bold}>{result.maxBendLength}mm</Text>
+                      </Text>
+                    </View>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Text style={styles.resultErrorText}>⚠ {result.error}</Text>
+                  {result.suggestion && (
+                    <Text style={styles.resultSuggestion}>
+                      Nearest: {result.suggestion.bendLength}mm → {result.suggestion.correction}°
+                    </Text>
+                  )}
+                </>
+              )}
+            </View>
+          ) : (
+            <View>
+              <View style={styles.resultValues}>
+                <View>
+                  <Text style={styles.resultLabel}>Bend Correction</Text>
+                  <Text style={styles.resultCorrection}>{result.correction}°</Text>
+                </View>
+                <View style={styles.resultCrown}>
+                  <Text style={styles.resultLabel}>Crown</Text>
+                  <Text style={styles.resultCrownValue}>{result.crown}</Text>
+                </View>
+              </View>
+              {result.isExtrapolated && (
+                <View style={styles.resultWarning}>
+                  <Text style={styles.resultWarningText}>
+                    ⚠ EXTRAPOLATED — {result.extrapolatedAbove
+                      ? `Above maximum tested (${result.maxTested}mm)`
+                      : `Below minimum tested (${result.minTested}mm)`}. Use with caution.
+                  </Text>
+                </View>
+              )}
+              {result.isExact && (
+                <View style={styles.resultExact}>
+                  <Text style={styles.resultExactText}>✓ Exact match from test data</Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+      )}
+    </>
+  );
+
+  const dataSection = (
+    <>
+      {/* Correction Curve — always visible in landscape, toggle in portrait */}
+      {isLandscape ? (
+        chartData.length > 0 && (
           <View style={styles.chartContainer}>
             <Text style={styles.chartHint}>Touch or drag to inspect data points</Text>
             <CorrectionChart
@@ -336,61 +311,109 @@ export default function LookupScreen() {
               activeBendLength={result && !result.error ? parseFloat(bendLengthInput) : null}
             />
           </View>
-        )}
-
-        {/* History */}
-        {history.length > 0 && (
-          <View style={styles.historyContainer}>
-            <View style={styles.historyHeader}>
-              <Text style={styles.historyTitle}>Recent Lookups</Text>
-              <TouchableOpacity onPress={() => setHistory([])}>
-                <Text style={styles.historyClear}>Clear</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.historyList}>
-              {history.map(entry => (
-                <TouchableOpacity
-                  key={entry.id}
-                  onPress={() => loadFromHistory(entry)}
-                  style={styles.historyEntry}
-                >
-                  <View>
-                    <Text style={styles.historyValue}>
-                      {entry.bendLength}mm × {entry.flange}mm flange
-                    </Text>
-                    <Text style={styles.historyMeta}>
-                      {entry.timestamp} {!entry.isExact && '• interpolated'}
-                    </Text>
-                  </View>
-                  <View style={styles.historyResult}>
-                    <Text style={styles.historyCorrection}>{entry.correction}°</Text>
-                    <Text style={styles.historyCrown}>↕ {entry.crown}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Manage Data */}
-        <View style={styles.manageDataRow}>
+        )
+      ) : (
+        <>
           <TouchableOpacity
-            style={styles.manageButton}
-            onPress={() => {
-              setAddNewFormState(getDefaultAddNewState());
-              setShowAddNewModal(true);
-            }}
+            onPress={() => setShowChart(!showChart)}
+            style={styles.chartToggle}
           >
-            <Text style={styles.manageButtonText}>+ Add Correction</Text>
+            <Text style={styles.chartToggleText}>
+              {showChart ? '▼' : '▶'} Correction Curve
+            </Text>
           </TouchableOpacity>
-        </View>
+          {showChart && chartData.length > 0 && (
+            <View style={styles.chartContainer}>
+              <Text style={styles.chartHint}>Touch or drag to inspect data points</Text>
+              <CorrectionChart
+                data={chartData}
+                activeBendLength={result && !result.error ? parseFloat(bendLengthInput) : null}
+              />
+            </View>
+          )}
+        </>
+      )}
 
-        {/* Footer */}
-        <Text style={styles.footer}>
-          Data: 2mm/12ga 3003 Aluminum • More materials coming soon
-        </Text>
-      </ScrollView>
+      {/* Correction History */}
+      {history.length > 0 && (
+        <View style={styles.historyContainer}>
+          <View style={styles.historyHeader}>
+            <Text style={styles.historyTitle}>Correction History</Text>
+            <TouchableOpacity onPress={() => setHistory([])}>
+              <Text style={styles.historyClear}>Clear</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.historyList}>
+            {history.map(entry => (
+              <TouchableOpacity
+                key={entry.id}
+                onPress={() => loadFromHistory(entry)}
+                style={styles.historyEntry}
+              >
+                <View>
+                  <Text style={styles.historyValue}>
+                    {entry.bendLength}mm × {entry.flange}mm flange
+                  </Text>
+                  <Text style={styles.historyMeta}>
+                    {entry.timestamp} {!entry.isExact && '• interpolated'}
+                  </Text>
+                </View>
+                <View style={styles.historyResult}>
+                  <Text style={styles.historyCorrection}>{entry.correction}°</Text>
+                  <Text style={styles.historyCrown}>↕ {entry.crown}</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {/* Add Correction */}
+      <View style={styles.manageDataRow}>
+        <TouchableOpacity
+          style={styles.manageButton}
+          onPress={() => {
+            setAddNewFormState(getDefaultAddNewState());
+            setShowAddNewModal(true);
+          }}
+        >
+          <Text style={styles.manageButtonText}>+ Add Correction</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Footer */}
+      <Text style={styles.footer}>
+        Data: 2mm/12ga 3003 Aluminum • More materials coming soon
+      </Text>
+    </>
+  );
+
+  // ─── Layout ───────────────────────────────────────────────────────────────
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {isLandscape ? (
+        <View style={styles.landscapeContainer}>
+          <ScrollView
+            style={styles.landscapeLeft}
+            contentContainerStyle={styles.scrollContent}
+          >
+            {controlsSection}
+          </ScrollView>
+          <View style={styles.landscapeDivider} />
+          <ScrollView
+            style={styles.landscapeRight}
+            contentContainerStyle={styles.scrollContent}
+          >
+            {dataSection}
+          </ScrollView>
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.scrollContent}>
+          {controlsSection}
+          {dataSection}
+        </ScrollView>
+      )}
 
       {/* Add New Correction Modal */}
       <Modal visible={showAddNewModal} transparent animationType="slide">
@@ -402,9 +425,7 @@ export default function LookupScreen() {
                 <Text style={styles.modalClose}>✕</Text>
               </TouchableOpacity>
             </View>
-
             <ScrollView contentContainerStyle={styles.modaNalContent}>
-              {/* Material */}
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Material</Text>
                 <DropdownPicker
@@ -418,7 +439,6 @@ export default function LookupScreen() {
                   }}
                 />
               </View>
-
               {addNewFormState.selectedMaterialKey === '__new__' && (
                 <>
                   <View style={styles.formGroup}>
@@ -460,8 +480,6 @@ export default function LookupScreen() {
                   </View>
                 </>
               )}
-
-              {/* Flange height */}
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Flange Height</Text>
                 <DropdownPicker
@@ -470,7 +488,6 @@ export default function LookupScreen() {
                   onSelect={(val) => setAddNewFormState({ ...addNewFormState, selectedFlange: val })}
                 />
               </View>
-
               {addNewFormState.selectedFlange === '__new__' && (
                 <View style={styles.formGroup}>
                   <Text style={styles.label}>New Flange Height (mm)</Text>
@@ -483,10 +500,7 @@ export default function LookupScreen() {
                   />
                 </View>
               )}
-
               <View style={styles.formDivider} />
-
-              {/* Data point */}
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Bend Length (mm)</Text>
                 <TextInput
@@ -497,7 +511,6 @@ export default function LookupScreen() {
                   onChangeText={(text) => setAddNewFormState({ ...addNewFormState, bendLength: text })}
                 />
               </View>
-
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Correction (°)</Text>
                 <TextInput
@@ -508,7 +521,6 @@ export default function LookupScreen() {
                   onChangeText={(text) => setAddNewFormState({ ...addNewFormState, bendCorrection: text })}
                 />
               </View>
-
               <View style={styles.formGroup}>
                 <Text style={styles.label}>Crown (optional)</Text>
                 <TextInput
@@ -519,18 +531,13 @@ export default function LookupScreen() {
                   onChangeText={(text) => setAddNewFormState({ ...addNewFormState, crown: text })}
                 />
               </View>
-
-              <TouchableOpacity
-                style={styles.submitButton}
-                onPress={handleAddNewCorrection}
-              >
+              <TouchableOpacity style={styles.submitButton} onPress={handleAddNewCorrection}>
                 <Text style={styles.submitButtonText}>Add Correction</Text>
               </TouchableOpacity>
             </ScrollView>
           </View>
         </View>
       </Modal>
-
     </SafeAreaView>
   );
 }
@@ -543,6 +550,20 @@ const styles = StyleSheet.create({
   scrollContent: {
     padding: 16,
   },
+  landscapeContainer: {
+    flex: 1,
+    flexDirection: 'row',
+  },
+  landscapeLeft: {
+    flex: 5,
+  },
+  landscapeDivider: {
+    width: 1,
+    backgroundColor: '#2d2d4d',
+  },
+  landscapeRight: {
+    flex: 6,
+  },
   header: {
     backgroundColor: '#f59e0b',
     borderRadius: 12,
@@ -554,16 +575,10 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '800',
     color: '#1a1a2e',
-    letterSpacing: -0.5,
-  },
-  headerSubtitle: {
-    fontSize: 12,
-    color: '#1a1a2e',
-    opacity: 0.8,
-    marginTop: 4,
+    letterSpacing: -0.3,
   },
   headerIcon: {
     width: 48,
