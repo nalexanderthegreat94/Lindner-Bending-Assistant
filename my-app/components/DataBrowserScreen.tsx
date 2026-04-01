@@ -5,62 +5,136 @@ import {
   StyleSheet,
   ScrollView,
   SafeAreaView,
+  TouchableOpacity,
+  Modal,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { useBendData } from '@/src/context/BendDataContext';
-import { BendDataPoint } from '@/src/types';
 import DropdownPicker from '@/components/ui/DropdownPicker';
 
-const MATERIAL_KEY = '2mm_aluminum';
+const ADMIN_PASSWORD = 'admin';
 
 export default function DataBrowserScreen() {
-  const { db } = useBendData();
-  const material = db[MATERIAL_KEY];
+  const { db, deleteDataPoint } = useBendData();
 
-  const availableFlanges = useMemo(
-    () => Object.keys(material.flanges).map(Number).sort((a, b) => a - b),
-    [material]
+  // ── Material selection ────────────────────────────────────────────────────
+  const materialOptions = useMemo(
+    () => Object.keys(db).map(key => ({ label: db[key].name, value: key })),
+    [db]
   );
 
+  const [selectedMaterialKey, setSelectedMaterialKey] = useState(
+    () => Object.keys(db)[0] ?? ''
+  );
+  const material = db[selectedMaterialKey];
+
+  const availableFlanges = useMemo(() => {
+    if (!material) return [];
+    return Object.keys(material.flanges).map(Number).sort((a, b) => a - b);
+  }, [material]);
+
   const [selectedFlange, setSelectedFlange] = useState(() => {
-    // Default to the flange with the most data points
-    const flanges = Object.keys(material.flanges).map(Number).sort((a, b) => a - b);
-    return flanges.includes(10) ? 10 : flanges[0];
+    const flanges = Object.keys(db[Object.keys(db)[0] ?? '']?.flanges ?? {})
+      .map(Number)
+      .sort((a, b) => a - b);
+    return flanges.includes(10) ? 10 : (flanges[0] ?? 0);
   });
 
-  const flangeData: BendDataPoint[] = material.flanges[selectedFlange] || [];
+  const handleMaterialChange = (key: string) => {
+    setSelectedMaterialKey(key);
+    const flanges = Object.keys(db[key]?.flanges ?? {})
+      .map(Number)
+      .sort((a, b) => a - b);
+    setSelectedFlange(flanges.includes(10) ? 10 : (flanges[0] ?? 0));
+  };
+
+  const flangeData = material?.flanges[selectedFlange] ?? [];
   const validData = flangeData.filter(d => d.correction !== null);
 
   const stats = useMemo(() => {
     if (validData.length === 0) return null;
     const lengths = validData.map(d => d.bendLength);
-    return {
-      count: validData.length,
-      min: Math.min(...lengths),
-      max: Math.max(...lengths),
-    };
+    return { count: validData.length, min: Math.min(...lengths), max: Math.max(...lengths) };
   }, [validData]);
 
+  // ── Admin ─────────────────────────────────────────────────────────────────
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
+
+  const openLogin = () => {
+    setPasswordInput('');
+    setPasswordError(false);
+    setShowLoginModal(true);
+  };
+
+  const handleLogin = () => {
+    if (passwordInput === ADMIN_PASSWORD) {
+      setIsAdmin(true);
+      setShowLoginModal(false);
+    } else {
+      setPasswordError(true);
+      setPasswordInput('');
+    }
+  };
+
+  const handleDelete = (bendLength: number) => {
+    Alert.alert(
+      'Delete Data Point',
+      `Remove ${bendLength}mm from the ${selectedFlange}mm flange?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteDataPoint(selectedMaterialKey, selectedFlange, bendLength),
+        },
+      ]
+    );
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>BROWSE DATA</Text>
-          <Text style={styles.headerSubtitle}>{material.name}</Text>
+          <Text style={styles.headerSubtitle} numberOfLines={1}>
+            {material?.name ?? ''}
+          </Text>
         </View>
-        <View style={styles.headerIcon}>
-          <Text style={styles.headerIconText}>≡</Text>
-        </View>
+        {isAdmin ? (
+          <TouchableOpacity style={styles.adminBadge} onPress={() => setIsAdmin(false)}>
+            <Text style={styles.adminBadgeText}>✓ ADMIN</Text>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.adminButton} onPress={openLogin}>
+            <Text style={styles.adminButtonText}>Admin</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* Flange selector */}
-      <View style={styles.flangeSection}>
-        <Text style={styles.sectionLabel}>Flange Height</Text>
-        <DropdownPicker
-          options={availableFlanges.map(f => ({ label: `${f}mm`, value: f.toString() }))}
-          selectedValue={selectedFlange.toString()}
-          onSelect={(val) => setSelectedFlange(Number(val))}
-        />
+      {/* Material + Flange selectors */}
+      <View style={styles.selectorRow}>
+        <View style={styles.selectorItem}>
+          <Text style={styles.sectionLabel}>Material</Text>
+          <DropdownPicker
+            options={materialOptions}
+            selectedValue={selectedMaterialKey}
+            onSelect={handleMaterialChange}
+          />
+        </View>
+        <View style={styles.selectorItem}>
+          <Text style={styles.sectionLabel}>Flange Height</Text>
+          <DropdownPicker
+            options={availableFlanges.map(f => ({ label: `${f}mm`, value: f.toString() }))}
+            selectedValue={selectedFlange.toString()}
+            onSelect={(val) => setSelectedFlange(Number(val))}
+          />
+        </View>
       </View>
 
       {/* Stats bar */}
@@ -93,13 +167,14 @@ export default function DataBrowserScreen() {
         <Text style={[styles.tableHeaderCell, styles.colCorrection]}>Correction</Text>
         <Text style={[styles.tableHeaderCell, styles.colCrown]}>Crown</Text>
         <Text style={[styles.tableHeaderCell, styles.colNote]}>Note</Text>
+        {isAdmin && <View style={styles.colDelete} />}
       </View>
 
       {/* Table rows */}
       <ScrollView style={styles.tableBody} contentContainerStyle={styles.tableBodyContent}>
         {flangeData.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No data for {selectedFlange}mm flange</Text>
+            <Text style={styles.emptyStateText}>No data for {selectedFlange}mm flange height</Text>
           </View>
         ) : (
           flangeData.map((point, idx) => (
@@ -110,32 +185,64 @@ export default function DataBrowserScreen() {
               <Text style={[styles.tableCell, styles.colBendLength, styles.cellBendLength]}>
                 {point.bendLength}
               </Text>
-              <Text
-                style={[
-                  styles.tableCell,
-                  styles.colCorrection,
-                  point.correction !== null ? styles.cellCorrection : styles.cellNull,
-                ]}
-              >
+              <Text style={[
+                styles.tableCell,
+                styles.colCorrection,
+                point.correction !== null ? styles.cellCorrection : styles.cellNull,
+              ]}>
                 {point.correction !== null ? `${point.correction}°` : '—'}
               </Text>
-              <Text
-                style={[
-                  styles.tableCell,
-                  styles.colCrown,
-                  point.crown !== null ? styles.cellCrown : styles.cellNull,
-                ]}
-              >
+              <Text style={[
+                styles.tableCell,
+                styles.colCrown,
+                point.crown !== null ? styles.cellCrown : styles.cellNull,
+              ]}>
                 {point.crown !== null ? point.crown : '—'}
               </Text>
               <Text style={[styles.tableCell, styles.colNote, styles.cellNote]}>
                 {point.note || ''}
               </Text>
+              {isAdmin && (
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => handleDelete(point.bendLength)}
+                >
+                  <Text style={styles.deleteButtonText}>✕</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ))
         )}
         <View style={styles.tableFooter} />
       </ScrollView>
+
+      {/* Admin login modal */}
+      <Modal visible={showLoginModal} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowLoginModal(false)}
+        >
+          <View style={styles.loginBox}>
+            <Text style={styles.loginTitle}>Admin Login</Text>
+            <TextInput
+              style={[styles.loginInput, passwordError && styles.loginInputError]}
+              placeholder="Password"
+              placeholderTextColor="#555"
+              secureTextEntry
+              value={passwordInput}
+              onChangeText={(t) => { setPasswordInput(t); setPasswordError(false); }}
+              onSubmitEditing={handleLogin}
+              autoCapitalize="none"
+              autoFocus
+            />
+            {passwordError && <Text style={styles.loginError}>Incorrect password</Text>}
+            <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+              <Text style={styles.loginButtonText}>Login</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -145,6 +252,8 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0d0d1a',
   },
+
+  // Header
   header: {
     backgroundColor: '#f59e0b',
     borderRadius: 12,
@@ -167,23 +276,40 @@ const styles = StyleSheet.create({
     color: '#1a1a2e',
     opacity: 0.8,
     marginTop: 4,
+    maxWidth: 220,
   },
-  headerIcon: {
-    width: 48,
-    height: 48,
+  adminButton: {
     backgroundColor: '#1a1a2e',
     borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
-  headerIconText: {
-    fontSize: 24,
+  adminButtonText: {
     color: '#f59e0b',
+    fontSize: 13,
     fontWeight: '700',
   },
-  flangeSection: {
+  adminBadge: {
+    backgroundColor: '#166534',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  adminBadgeText: {
+    color: '#4ade80',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  // Selectors
+  selectorRow: {
+    flexDirection: 'row',
+    gap: 12,
     paddingHorizontal: 16,
     marginBottom: 12,
+  },
+  selectorItem: {
+    flex: 1,
   },
   sectionLabel: {
     fontSize: 11,
@@ -192,6 +318,8 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
     marginBottom: 8,
   },
+
+  // Stats bar
   statsBar: {
     flexDirection: 'row',
     backgroundColor: '#252542',
@@ -229,6 +357,8 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
   },
+
+  // Table
   tableHeader: {
     flexDirection: 'row',
     backgroundColor: '#1a1a2e',
@@ -237,6 +367,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#3d3d5c',
+    alignItems: 'center',
   },
   tableHeaderCell: {
     fontSize: 11,
@@ -265,18 +396,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#e8e8e8',
   },
-  colBendLength: {
-    flex: 2,
-  },
-  colCorrection: {
-    flex: 2,
-  },
-  colCrown: {
-    flex: 1.5,
-  },
-  colNote: {
-    flex: 2,
-  },
+  colBendLength: { flex: 2 },
+  colCorrection: { flex: 2 },
+  colCrown:      { flex: 1.5 },
+  colNote:       { flex: 2 },
+  colDelete:     { width: 36 },
   cellBendLength: {
     fontWeight: '600',
     color: '#fff',
@@ -298,6 +422,19 @@ const styles = StyleSheet.create({
     color: '#f59e0b',
     fontSize: 12,
   },
+  deleteButton: {
+    width: 28,
+    height: 28,
+    backgroundColor: '#3d1515',
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButtonText: {
+    color: '#ef4444',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   emptyState: {
     padding: 40,
     alignItems: 'center',
@@ -308,5 +445,64 @@ const styles = StyleSheet.create({
   },
   tableFooter: {
     height: 20,
+  },
+
+  // Login modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  loginBox: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#3d3d5c',
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+  },
+  loginTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  loginInput: {
+    backgroundColor: '#0d0d1a',
+    borderWidth: 2,
+    borderColor: '#3d3d5c',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    color: '#fff',
+    fontSize: 16,
+    textAlign: 'center',
+    letterSpacing: 3,
+    marginBottom: 8,
+  },
+  loginInputError: {
+    borderColor: '#ef4444',
+  },
+  loginError: {
+    color: '#ef4444',
+    fontSize: 13,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  loginButton: {
+    backgroundColor: '#f59e0b',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  loginButtonText: {
+    color: '#1a1a2e',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });

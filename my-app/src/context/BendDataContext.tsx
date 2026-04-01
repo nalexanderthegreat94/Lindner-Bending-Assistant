@@ -4,6 +4,7 @@ import { MaterialsDatabase, BendDataPoint } from '../types';
 import { MATERIALS_DB } from '../database/sampleData';
 
 const USER_DATA_KEY = '@bending_assistant/user_data';
+const DELETED_POINTS_KEY = '@bending_assistant/deleted_points';
 
 /**
  * Deep-merges user additions on top of the base MATERIALS_DB.
@@ -43,6 +44,25 @@ function mergeDB(base: MaterialsDatabase, additions: MaterialsDatabase): Materia
   return result;
 }
 
+/** Applies a set of tombstoned points on top of a merged db. */
+function applyDeletions(merged: MaterialsDatabase, deleted: Set<string>): MaterialsDatabase {
+  if (deleted.size === 0) return merged;
+  const result: MaterialsDatabase = JSON.parse(JSON.stringify(merged));
+  for (const matKey of Object.keys(result)) {
+    for (const flangeStr of Object.keys(result[matKey].flanges)) {
+      const flange = Number(flangeStr);
+      result[matKey].flanges[flange] = result[matKey].flanges[flange].filter(
+        (p: BendDataPoint) => !deleted.has(`${matKey}::${flange}::${p.bendLength}`)
+      );
+    }
+  }
+  return result;
+}
+
+function buildDB(base: MaterialsDatabase, additions: MaterialsDatabase, deleted: Set<string>): MaterialsDatabase {
+  return applyDeletions(mergeDB(base, additions), deleted);
+}
+
 interface MaterialMeta {
   name: string;
   thickness: number;
@@ -53,31 +73,34 @@ interface BendDataContextValue {
   db: MaterialsDatabase;
   addDataPoint: (materialKey: string, flange: number, point: BendDataPoint, meta?: MaterialMeta) => Promise<void>;
   importCSV: (materialKey: string, flange: number, csvText: string, meta?: MaterialMeta) => Promise<number>;
+  deleteDataPoint: (materialKey: string, flange: number, bendLength: number) => Promise<void>;
 }
 
 const BendDataContext = createContext<BendDataContextValue | null>(null);
 
 export function BendDataProvider({ children }: { children: React.ReactNode }) {
   const [userAdditions, setUserAdditions] = useState<MaterialsDatabase>({});
+  const [deletedPoints, setDeletedPoints] = useState<Set<string>>(new Set());
   const [db, setDb] = useState<MaterialsDatabase>(MATERIALS_DB);
 
   useEffect(() => {
-    AsyncStorage.getItem(USER_DATA_KEY)
-      .then(stored => {
-        if (stored) {
-          const parsed: MaterialsDatabase = JSON.parse(stored);
-          setUserAdditions(parsed);
-          setDb(mergeDB(MATERIALS_DB, parsed));
-        }
-      })
-      .catch(console.error);
+    Promise.all([
+      AsyncStorage.getItem(USER_DATA_KEY),
+      AsyncStorage.getItem(DELETED_POINTS_KEY),
+    ]).then(([userData, deletedData]) => {
+      const additions: MaterialsDatabase = userData ? JSON.parse(userData) : {};
+      const deleted: Set<string> = deletedData ? new Set(JSON.parse(deletedData)) : new Set();
+      setUserAdditions(additions);
+      setDeletedPoints(deleted);
+      setDb(buildDB(MATERIALS_DB, additions, deleted));
+    }).catch(console.error);
   }, []);
 
   const persist = useCallback(async (next: MaterialsDatabase) => {
     await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(next));
     setUserAdditions(next);
-    setDb(mergeDB(MATERIALS_DB, next));
-  }, []);
+    setDb(buildDB(MATERIALS_DB, next, deletedPoints));
+  }, [deletedPoints]);
 
   const addDataPoint = useCallback(
     async (materialKey: string, flange: number, point: BendDataPoint, meta?: MaterialMeta) => {
@@ -169,8 +192,19 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
     [userAdditions, persist]
   );
 
+  const deleteDataPoint = useCallback(
+    async (materialKey: string, flange: number, bendLength: number) => {
+      const key = `${materialKey}::${flange}::${bendLength}`;
+      const next = new Set([...deletedPoints, key]);
+      await AsyncStorage.setItem(DELETED_POINTS_KEY, JSON.stringify([...next]));
+      setDeletedPoints(next);
+      setDb(buildDB(MATERIALS_DB, userAdditions, next));
+    },
+    [deletedPoints, userAdditions]
+  );
+
   return (
-    <BendDataContext.Provider value={{ db, addDataPoint, importCSV }}>
+    <BendDataContext.Provider value={{ db, addDataPoint, importCSV, deleteDataPoint }}>
       {children}
     </BendDataContext.Provider>
   );

@@ -263,6 +263,14 @@ export default function LookupScreen() {
                       <Text style={styles.resultErrorIcon}>⊘</Text>
                       <Text style={styles.resultErrorTitle}>{result.error}</Text>
                     </View>
+                    {result.maxBendLength && (
+                      <View style={styles.resultHint}>
+                        <Text style={styles.resultHintText}>
+                          Max bend length for {flangeLength}mm flange:{' '}
+                          <Text style={styles.bold}>{result.maxBendLength}mm</Text>
+                        </Text>
+                      </View>
+                    )}
                   </>
                 ) : (
                   <>
@@ -670,12 +678,11 @@ const styles = StyleSheet.create({
   },
   numpadButton: {
     flex: 1,
-    aspectRatio: 1.6,
+    height: 64,
     backgroundColor: '#252542',
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    minHeight: 52,
   },
   numpadButtonClear: {
     backgroundColor: '#dc2626',
@@ -689,9 +696,9 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   numpadButtonCalculate: {
+    height: 64,
     backgroundColor: '#10b981',
     borderRadius: 8,
-    paddingVertical: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
