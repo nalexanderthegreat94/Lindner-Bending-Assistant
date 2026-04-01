@@ -8,7 +8,6 @@
       "developmentClient": true,
       "distribution": "internal",
       "android": {
-        "buildConfiguration": "debug",
         "gradleCommand": ":app:assembleDebug"
       },
       "ios": {
