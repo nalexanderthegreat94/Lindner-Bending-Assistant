@@ -13,6 +13,7 @@ import { useBendData } from '@/src/context/BendDataContext';
 import { findCorrection } from '@/src/utils/interpolation';
 import { CorrectionResult } from '@/src/types';
 import DropdownPicker from '@/components/ui/DropdownPicker';
+import CorrectionChart from '@/components/ui/CorrectionChart';
 
 interface HistoryEntry {
   id: number;
@@ -326,32 +327,14 @@ export default function LookupScreen() {
           </Text>
         </TouchableOpacity>
 
-        {/* Chart Data Display */}
+        {/* Interactive Chart */}
         {showChart && chartData.length > 0 && (
           <View style={styles.chartContainer}>
-            <View style={styles.chartTable}>
-              <View style={styles.chartHeader}>
-                <Text style={styles.chartHeaderCell}>Bend (mm)</Text>
-                <Text style={styles.chartHeaderCell}>Correction (°)</Text>
-                <Text style={styles.chartHeaderCell}>Crown</Text>
-              </View>
-              <ScrollView style={styles.chartBody} nestedScrollEnabled>
-                {chartData.slice(0, 10).map((item, idx) => (
-                  <View key={idx} style={styles.chartRow}>
-                    <Text style={styles.chartCell}>{item.bendLength}</Text>
-                    <Text style={styles.chartCell}>{item.correction}</Text>
-                    <Text style={styles.chartCell}>{item.crown}</Text>
-                  </View>
-                ))}
-                {chartData.length > 10 && (
-                  <View style={styles.chartRow}>
-                    <Text style={styles.chartCell}>...</Text>
-                    <Text style={styles.chartCell}>{chartData.length} total</Text>
-                    <Text style={styles.chartCell}>points</Text>
-                  </View>
-                )}
-              </ScrollView>
-            </View>
+            <Text style={styles.chartHint}>Touch or drag to inspect data points</Text>
+            <CorrectionChart
+              data={chartData}
+              activeBendLength={result && !result.error ? parseFloat(bendLengthInput) : null}
+            />
           </View>
         )}
 
@@ -846,42 +829,15 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#3d3d5c',
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
     marginBottom: 16,
   },
-  chartTable: {
-    backgroundColor: '#1a1a2e',
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  chartHeader: {
-    flexDirection: 'row',
-    backgroundColor: '#252542',
-    borderBottomWidth: 1,
-    borderBottomColor: '#3d3d5c',
-  },
-  chartHeaderCell: {
-    flex: 1,
-    padding: 10,
-    color: '#888',
-    fontSize: 12,
-    fontWeight: '600',
+  chartHint: {
+    fontSize: 11,
+    color: '#444466',
     textAlign: 'center',
-  },
-  chartBody: {
-    maxHeight: 150,
-  },
-  chartRow: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#2d2d4d',
-  },
-  chartCell: {
-    flex: 1,
-    padding: 10,
-    color: '#e8e8e8',
-    fontSize: 12,
-    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: 0.3,
   },
   historyContainer: {
     backgroundColor: '#0d0d1a',
