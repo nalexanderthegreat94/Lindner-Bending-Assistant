@@ -24,15 +24,34 @@ interface Props {
   height?: number;
 }
 
-const PAD = { top: 20, right: 20, bottom: 44, left: 52 };
+// Left axis: correction (amber). Right axis: crown (blue).
+const PAD = { top: 32, right: 52, bottom: 44, left: 52 };
+const TICK_COUNT = 4;
 
-export default function CorrectionChart({ data, activeBendLength, height = 240 }: Props) {
+function makeScale(values: number[], plotH: number, topPad: number) {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const pad = range * 0.15;
+  const lo = min - pad;
+  const hi = max + pad;
+  const span = hi - lo;
+  const toY = (v: number) => topPad + plotH - ((v - lo) / span) * plotH;
+  const ticks = Array.from({ length: TICK_COUNT + 1 }, (_, i) => lo + (i / TICK_COUNT) * span);
+  return { toY, ticks, lo, hi };
+}
+
+export default function CorrectionChart({ data, activeBendLength, height = 260 }: Props) {
   const [width, setWidth] = useState(300);
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
 
-  const validData = data.filter(d => d.correction !== null) as (ChartPoint & { correction: number })[];
+  // Points that have at least a correction value
+  const corrData = data.filter(d => d.correction !== null) as (ChartPoint & { correction: number })[];
+  // Points that have crown data
+  const crownData = data.filter(d => d.crown !== null) as (ChartPoint & { crown: number })[];
+  const hasCrown = crownData.length > 0;
 
-  if (validData.length === 0) {
+  if (corrData.length === 0) {
     return (
       <View style={[styles.empty, { height }]}>
         <Text style={styles.emptyText}>No data points to display</Text>
@@ -43,37 +62,50 @@ export default function CorrectionChart({ data, activeBendLength, height = 240 }
   const plotW = Math.max(width - PAD.left - PAD.right, 10);
   const plotH = height - PAD.top - PAD.bottom;
 
-  const minX = Math.min(...validData.map(d => d.bendLength));
-  const maxX = Math.max(...validData.map(d => d.bendLength));
-  const minY = Math.min(...validData.map(d => d.correction));
-  const maxY = Math.max(...validData.map(d => d.correction));
-
+  // X scale (shared)
+  const minX = Math.min(...corrData.map(d => d.bendLength));
+  const maxX = Math.max(...corrData.map(d => d.bendLength));
   const xRange = maxX - minX || 1;
-  const yRange = maxY - minY || 1;
-  const yPadding = yRange * 0.15;
-  const yMin = minY - yPadding;
-  const yMax = maxY + yPadding;
-  const yRangeAdj = yMax - yMin;
-
   const toX = (v: number) => PAD.left + ((v - minX) / xRange) * plotW;
-  const toY = (v: number) => PAD.top + plotH - ((v - yMin) / yRangeAdj) * plotH;
 
-  // Build line path
-  const pathD = validData
-    .map((d, i) => `${i === 0 ? 'M' : 'L'} ${toX(d.bendLength).toFixed(1)} ${toY(d.correction).toFixed(1)}`)
+  // Y scales
+  const corrScale = makeScale(corrData.map(d => d.correction), plotH, PAD.top);
+  const crownScale = hasCrown
+    ? makeScale(crownData.map(d => d.crown), plotH, PAD.top)
+    : null;
+
+  // Paths
+  const corrPathD = corrData
+    .map((d, i) =>
+      `${i === 0 ? 'M' : 'L'} ${toX(d.bendLength).toFixed(1)} ${corrScale.toY(d.correction).toFixed(1)}`
+    )
     .join(' ');
 
-  // Area fill path (from line down to bottom)
-  const areaD =
-    pathD +
-    ` L ${toX(validData[validData.length - 1].bendLength).toFixed(1)} ${(PAD.top + plotH).toFixed(1)}` +
-    ` L ${toX(validData[0].bendLength).toFixed(1)} ${(PAD.top + plotH).toFixed(1)} Z`;
+  const corrAreaD =
+    corrPathD +
+    ` L ${toX(corrData[corrData.length - 1].bendLength).toFixed(1)} ${(PAD.top + plotH).toFixed(1)}` +
+    ` L ${toX(corrData[0].bendLength).toFixed(1)} ${(PAD.top + plotH).toFixed(1)} Z`;
 
-  // Pan responder for touch interaction
+  const crownPathD =
+    hasCrown && crownScale
+      ? crownData
+          .map((d, i) =>
+            `${i === 0 ? 'M' : 'L'} ${toX(d.bendLength).toFixed(1)} ${crownScale.toY(d.crown).toFixed(1)}`
+          )
+          .join(' ')
+      : null;
+
+  // X ticks
+  const xTickCount = Math.min(5, corrData.length);
+  const xTicks = Array.from({ length: xTickCount + 1 }, (_, i) =>
+    minX + (i / xTickCount) * xRange
+  );
+
+  // Touch handling — snap to nearest correction data point by X
   const findNearest = (touchX: number) => {
     let nearestIdx = 0;
     let nearestDist = Infinity;
-    validData.forEach((d, i) => {
+    corrData.forEach((d, i) => {
       const dist = Math.abs(toX(d.bendLength) - touchX);
       if (dist < nearestDist) {
         nearestDist = dist;
@@ -94,92 +126,66 @@ export default function CorrectionChart({ data, activeBendLength, height = 240 }
     })
   ).current;
 
-  // Result point matching the current lookup
+  // Result point from current lookup
   const resultIdx =
-    activeBendLength != null
-      ? validData.findIndex(d => d.bendLength === activeBendLength)
-      : -1;
+    activeBendLength != null ? corrData.findIndex(d => d.bendLength === activeBendLength) : -1;
 
-  // Active point (touch takes priority over result highlight)
   const displayIdx = activeIdx ?? resultIdx;
-  const activePoint = displayIdx >= 0 ? validData[displayIdx] : null;
+  const activePoint = displayIdx >= 0 ? corrData[displayIdx] : null;
 
-  // Axis ticks
-  const xTickCount = Math.min(5, validData.length);
-  const yTickCount = 4;
-
-  const xTicks = Array.from({ length: xTickCount + 1 }, (_, i) =>
-    minX + (i / xTickCount) * xRange
-  );
-  const yTicks = Array.from({ length: yTickCount + 1 }, (_, i) =>
-    yMin + (i / yTickCount) * yRangeAdj
-  );
-
-  // Tooltip positioning
+  // Tooltip
+  const tooltipBoxW = 120;
+  const tooltipRowH = 20;
+  const tooltipRows = 1 + (hasCrown ? 1 : 0); // correction + optional crown
+  const tooltipBoxH = 22 + tooltipRows * tooltipRowH + 4;
   const tooltipX = activePoint ? toX(activePoint.bendLength) : 0;
-  const tooltipBoxW = 110;
-  const tooltipBoxH = activePoint?.crown ? 68 : 50;
   let tooltipBoxX = tooltipX + 10;
-  if (tooltipBoxX + tooltipBoxW > width - PAD.right) {
+  if (tooltipBoxX + tooltipBoxW > width - 4) {
     tooltipBoxX = tooltipX - tooltipBoxW - 10;
   }
   const tooltipBoxY = PAD.top + 4;
 
+  // Crown value at active index (match by bendLength)
+  const activeCrownPoint =
+    activePoint && hasCrown
+      ? crownData.find(d => d.bendLength === activePoint.bendLength) ?? null
+      : null;
+
   return (
-    <View
-      onLayout={e => setWidth(e.nativeEvent.layout.width)}
-      style={styles.container}
-    >
+    <View onLayout={e => setWidth(e.nativeEvent.layout.width)} style={styles.container}>
       <View {...panResponder.panHandlers} style={{ width, height }}>
         <Svg width={width} height={height}>
           <Defs>
-            <LinearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0%" stopColor="#f59e0b" stopOpacity="0.18" />
+            <LinearGradient id="corrGrad" x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0%" stopColor="#f59e0b" stopOpacity="0.20" />
               <Stop offset="100%" stopColor="#f59e0b" stopOpacity="0.02" />
             </LinearGradient>
           </Defs>
 
           {/* Plot background */}
-          <Rect
-            x={PAD.left}
-            y={PAD.top}
-            width={plotW}
-            height={plotH}
-            fill="#111128"
-            rx={4}
-          />
+          <Rect x={PAD.left} y={PAD.top} width={plotW} height={plotH} fill="#111128" rx={4} />
 
-          {/* Y grid lines */}
-          {yTicks.map((val, i) => {
-            const y = toY(val);
+          {/* Horizontal grid lines (based on correction ticks) */}
+          {corrScale.ticks.map((val, i) => {
+            const y = corrScale.toY(val);
             return (
-              <G key={`yg-${i}`}>
-                <Line
-                  x1={PAD.left}
-                  y1={y}
-                  x2={PAD.left + plotW}
-                  y2={y}
-                  stroke="#2a2a45"
-                  strokeWidth={1}
-                />
-                <SvgText
-                  x={PAD.left - 6}
-                  y={y + 4}
-                  fontSize={9}
-                  fill="#555577"
-                  textAnchor="end"
-                >
-                  {val.toFixed(1)}°
-                </SvgText>
-              </G>
+              <Line
+                key={`hg-${i}`}
+                x1={PAD.left}
+                y1={y}
+                x2={PAD.left + plotW}
+                y2={y}
+                stroke="#2a2a45"
+                strokeWidth={1}
+              />
             );
           })}
 
-          {/* X grid lines */}
+          {/* Vertical grid lines */}
           {xTicks.map((val, i) => {
             const x = toX(val);
             return (
-              <G key={`xg-${i}`}>
+              <G key={`vg-${i}`}>
                 <Line
                   x1={x}
                   y1={PAD.top}
@@ -201,12 +207,54 @@ export default function CorrectionChart({ data, activeBendLength, height = 240 }
             );
           })}
 
-          {/* Area fill */}
-          <Path d={areaD} fill="url(#areaGrad)" />
+          {/* Left Y axis labels — Correction (amber) */}
+          {corrScale.ticks.map((val, i) => (
+            <SvgText
+              key={`cy-${i}`}
+              x={PAD.left - 6}
+              y={corrScale.toY(val) + 4}
+              fontSize={9}
+              fill="#c47a00"
+              textAnchor="end"
+            >
+              {val.toFixed(1)}°
+            </SvgText>
+          ))}
 
-          {/* Data line */}
+          {/* Right Y axis labels — Crown (blue) */}
+          {crownScale &&
+            crownScale.ticks.map((val, i) => (
+              <SvgText
+                key={`rcy-${i}`}
+                x={PAD.left + plotW + 6}
+                y={crownScale.toY(val) + 4}
+                fontSize={9}
+                fill="#3b7fd4"
+                textAnchor="start"
+              >
+                {val.toFixed(2)}
+              </SvgText>
+            ))}
+
+          {/* Correction area fill */}
+          <Path d={corrAreaD} fill="url(#corrGrad)" />
+
+          {/* Crown line */}
+          {crownPathD && (
+            <Path
+              d={crownPathD}
+              fill="none"
+              stroke="#60a5fa"
+              strokeWidth={2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="6,3"
+            />
+          )}
+
+          {/* Correction line */}
           <Path
-            d={pathD}
+            d={corrPathD}
             fill="none"
             stroke="#f59e0b"
             strokeWidth={2.5}
@@ -220,7 +268,15 @@ export default function CorrectionChart({ data, activeBendLength, height = 240 }
             y1={PAD.top}
             x2={PAD.left}
             y2={PAD.top + plotH}
-            stroke="#3d3d5c"
+            stroke="#c47a0066"
+            strokeWidth={1.5}
+          />
+          <Line
+            x1={PAD.left + plotW}
+            y1={PAD.top}
+            x2={PAD.left + plotW}
+            y2={PAD.top + plotH}
+            stroke={hasCrown ? '#3b7fd466' : '#3d3d5c'}
             strokeWidth={1.5}
           />
           <Line
@@ -232,15 +288,33 @@ export default function CorrectionChart({ data, activeBendLength, height = 240 }
             strokeWidth={1.5}
           />
 
-          {/* Data point dots */}
-          {validData.map((d, i) => {
+          {/* Crown dots */}
+          {hasCrown &&
+            crownScale &&
+            crownData.map((d, i) => {
+              const isActive = corrData[displayIdx]?.bendLength === d.bendLength;
+              return (
+                <Circle
+                  key={`cd-${i}`}
+                  cx={toX(d.bendLength)}
+                  cy={crownScale.toY(d.crown)}
+                  r={isActive ? 6 : 3}
+                  fill={isActive ? '#60a5fa' : '#1e1e36'}
+                  stroke="#60a5fa"
+                  strokeWidth={1.5}
+                />
+              );
+            })}
+
+          {/* Correction dots */}
+          {corrData.map((d, i) => {
             const isActive = i === displayIdx;
             const isResult = i === resultIdx && activeIdx === null;
             return (
               <Circle
-                key={i}
+                key={`d-${i}`}
                 cx={toX(d.bendLength)}
-                cy={toY(d.correction)}
+                cy={corrScale.toY(d.correction)}
                 r={isActive ? 7 : isResult ? 5 : 3.5}
                 fill={isActive ? '#f59e0b' : isResult ? '#4ade80' : '#1e1e36'}
                 stroke={isActive ? '#fff' : isResult ? '#4ade80' : '#f59e0b'}
@@ -249,21 +323,21 @@ export default function CorrectionChart({ data, activeBendLength, height = 240 }
             );
           })}
 
-          {/* Active crosshair */}
+          {/* Crosshair */}
           {activePoint && (
             <Line
               x1={toX(activePoint.bendLength)}
               y1={PAD.top}
               x2={toX(activePoint.bendLength)}
               y2={PAD.top + plotH}
-              stroke="#f59e0b"
+              stroke="#ffffff"
               strokeWidth={1}
-              strokeDasharray="4,3"
-              strokeOpacity={0.7}
+              strokeDasharray="3,3"
+              strokeOpacity={0.25}
             />
           )}
 
-          {/* Tooltip box */}
+          {/* Tooltip */}
           {activePoint && (
             <G>
               <Rect
@@ -272,62 +346,99 @@ export default function CorrectionChart({ data, activeBendLength, height = 240 }
                 width={tooltipBoxW}
                 height={tooltipBoxH}
                 rx={6}
-                fill="#1e1e38"
-                stroke="#f59e0b"
+                fill="#1a1a30"
+                stroke="#3d3d5c"
                 strokeWidth={1}
-                strokeOpacity={0.6}
               />
+              {/* Bend length header */}
               <SvgText
                 x={tooltipBoxX + tooltipBoxW / 2}
                 y={tooltipBoxY + 14}
                 fontSize={10}
-                fill="#888"
+                fill="#999"
                 textAnchor="middle"
               >
                 {activePoint.bendLength}mm
               </SvgText>
+              {/* Correction row */}
               <SvgText
-                x={tooltipBoxX + 10}
-                y={tooltipBoxY + 30}
+                x={tooltipBoxX + 8}
+                y={tooltipBoxY + 14 + tooltipRowH}
                 fontSize={9}
-                fill="#888"
+                fill="#c47a00"
               >
                 Correction
               </SvgText>
               <SvgText
                 x={tooltipBoxX + tooltipBoxW - 8}
-                y={tooltipBoxY + 30}
-                fontSize={13}
+                y={tooltipBoxY + 14 + tooltipRowH}
+                fontSize={12}
                 fontWeight="bold"
-                fill="#4ade80"
+                fill="#f59e0b"
                 textAnchor="end"
               >
                 {activePoint.correction.toFixed(2)}°
               </SvgText>
-              {activePoint.crown != null && (
+              {/* Crown row */}
+              {activeCrownPoint && (
                 <>
                   <SvgText
-                    x={tooltipBoxX + 10}
-                    y={tooltipBoxY + 50}
+                    x={tooltipBoxX + 8}
+                    y={tooltipBoxY + 14 + tooltipRowH * 2}
                     fontSize={9}
-                    fill="#888"
+                    fill="#3b7fd4"
                   >
                     Crown
                   </SvgText>
                   <SvgText
                     x={tooltipBoxX + tooltipBoxW - 8}
-                    y={tooltipBoxY + 50}
-                    fontSize={13}
+                    y={tooltipBoxY + 14 + tooltipRowH * 2}
+                    fontSize={12}
                     fontWeight="bold"
                     fill="#60a5fa"
                     textAnchor="end"
                   >
-                    {activePoint.crown}
+                    {activeCrownPoint.crown}
                   </SvgText>
                 </>
               )}
             </G>
           )}
+
+          {/* Legend */}
+          <G>
+            {/* Correction */}
+            <Line
+              x1={PAD.left + 4}
+              y1={PAD.top - 14}
+              x2={PAD.left + 20}
+              y2={PAD.top - 14}
+              stroke="#f59e0b"
+              strokeWidth={2.5}
+            />
+            <Circle cx={PAD.left + 12} cy={PAD.top - 14} r={3} fill="#f59e0b" />
+            <SvgText x={PAD.left + 24} y={PAD.top - 10} fontSize={9} fill="#c47a00">
+              Correction (°)
+            </SvgText>
+            {/* Crown */}
+            {hasCrown && (
+              <>
+                <Line
+                  x1={PAD.left + 96}
+                  y1={PAD.top - 14}
+                  x2={PAD.left + 112}
+                  y2={PAD.top - 14}
+                  stroke="#60a5fa"
+                  strokeWidth={2}
+                  strokeDasharray="5,2"
+                />
+                <Circle cx={PAD.left + 104} cy={PAD.top - 14} r={3} fill="#60a5fa" />
+                <SvgText x={PAD.left + 116} y={PAD.top - 10} fontSize={9} fill="#3b7fd4">
+                  Crown
+                </SvgText>
+              </>
+            )}
+          </G>
 
           {/* X-axis label */}
           <SvgText
