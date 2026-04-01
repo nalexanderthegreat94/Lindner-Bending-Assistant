@@ -11,40 +11,48 @@ export default function TabLayout() {
         headerShown: false,
         tabBarButton: HapticTab,
         tabBarActiveTintColor: '#f59e0b',
-        tabBarInactiveTintColor: '#666688',
+        tabBarInactiveTintColor: '#555577',
+        tabBarActiveBackgroundColor: '#1c1c3a',
         tabBarStyle: {
-          backgroundColor: '#12122a',
+          backgroundColor: '#0d0d1a',
           borderTopColor: '#2d2d4d',
           borderTopWidth: 1,
-          height: 64,
+          height: 76,
           paddingBottom: 10,
           paddingTop: 6,
+          paddingHorizontal: 6,
+        },
+        tabBarItemStyle: {
+          borderRadius: 12,
+          marginHorizontal: 4,
+          borderWidth: 1,
+          borderColor: '#1e1e36',
         },
         tabBarLabelStyle: {
-          fontSize: 11,
-          fontWeight: '600',
-          letterSpacing: 0.3,
+          fontSize: 13,
+          fontWeight: '700',
+          letterSpacing: 0.2,
         },
       }}>
       <Tabs.Screen
         name="index"
         options={{
           title: 'Bend Calculator',
-          tabBarIcon: ({ color }) => <IconSymbol size={26} name="magnifyingglass" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="magnifyingglass" color={color} />,
         }}
       />
       <Tabs.Screen
         name="explore"
         options={{
           title: 'Browse Data',
-          tabBarIcon: ({ color }) => <IconSymbol size={26} name="list.bullet" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="list.bullet" color={color} />,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: 'Settings',
-          tabBarIcon: ({ color }) => <IconSymbol size={26} name="gearshape" color={color} />,
+          tabBarIcon: ({ color }) => <IconSymbol size={28} name="gearshape" color={color} />,
         }}
       />
     </Tabs>
