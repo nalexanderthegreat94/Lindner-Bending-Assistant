@@ -43,7 +43,7 @@ export default function LookupScreen() {
   const [bendLengthInput, setBendLengthInput] = useState('');
   const [result, setResult] = useState<CorrectionResult | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [showChart, setShowChart] = useState(false);
+  const [showChart, setShowChart] = useState(true);
   const [showAddNewModal, setShowAddNewModal] = useState(false);
 
   const getDefaultAddNewState = () => ({
@@ -301,37 +301,23 @@ export default function LookupScreen() {
 
   const dataSection = (
     <>
-      {/* Correction Curve — always visible in landscape, toggle in portrait */}
-      {isLandscape ? (
-        chartData.length > 0 && (
-          <View style={styles.chartContainer}>
-            <Text style={styles.chartHint}>Touch or drag to inspect data points</Text>
-            <CorrectionChart
-              data={chartData}
-              activeBendLength={result && !result.error ? parseFloat(bendLengthInput) : null}
-            />
-          </View>
-        )
-      ) : (
-        <>
-          <TouchableOpacity
-            onPress={() => setShowChart(!showChart)}
-            style={styles.chartToggle}
-          >
-            <Text style={styles.chartToggleText}>
-              {showChart ? '▼' : '▶'} Correction Curve
-            </Text>
-          </TouchableOpacity>
-          {showChart && chartData.length > 0 && (
-            <View style={styles.chartContainer}>
-              <Text style={styles.chartHint}>Touch or drag to inspect data points</Text>
-              <CorrectionChart
-                data={chartData}
-                activeBendLength={result && !result.error ? parseFloat(bendLengthInput) : null}
-              />
-            </View>
-          )}
-        </>
+      {/* Correction Curve */}
+      <TouchableOpacity
+        onPress={() => setShowChart(!showChart)}
+        style={styles.chartToggle}
+      >
+        <Text style={styles.chartToggleText}>
+          {showChart ? '▼' : '▶'} Correction Curve
+        </Text>
+      </TouchableOpacity>
+      {showChart && chartData.length > 0 && (
+        <View style={styles.chartContainer}>
+          <Text style={styles.chartHint}>Touch or drag to inspect data points</Text>
+          <CorrectionChart
+            data={chartData}
+            activeBendLength={result && !result.error ? parseFloat(bendLengthInput) : null}
+          />
+        </View>
       )}
 
       {/* Correction History */}
