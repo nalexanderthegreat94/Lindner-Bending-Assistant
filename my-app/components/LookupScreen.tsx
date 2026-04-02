@@ -43,6 +43,7 @@ export default function LookupScreen() {
   const [flangeInput, setFlangeInput] = useState('10');
   const flangeLength = parseFloat(flangeInput) || 0;
   const [bendLengthInput, setBendLengthInput] = useState('');
+  const [activeInput, setActiveInput] = useState<'bendLength' | 'flangeHeight'>('bendLength');
   const [result, setResult] = useState<CorrectionResult | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [showChart, setShowChart] = useState(false);
@@ -98,15 +99,27 @@ export default function LookupScreen() {
   }, [db, material, chartFlange]);
 
   const handleNumpadPress = (value: string) => {
-    if (value === 'C') {
-      setBendLengthInput('');
-      setResult(null);
-    } else if (value === '⌫') {
-      setBendLengthInput(prev => prev.slice(0, -1));
-    } else if (value === 'GO') {
+    if (value === 'GO') {
       calculateResult();
+      return;
+    }
+    if (activeInput === 'flangeHeight') {
+      if (value === 'C') {
+        setFlangeInput('');
+      } else if (value === '⌫') {
+        setFlangeInput(prev => prev.slice(0, -1));
+      } else {
+        setFlangeInput(prev => prev + value);
+      }
     } else {
-      setBendLengthInput(prev => prev + value);
+      if (value === 'C') {
+        setBendLengthInput('');
+        setResult(null);
+      } else if (value === '⌫') {
+        setBendLengthInput(prev => prev.slice(0, -1));
+      } else {
+        setBendLengthInput(prev => prev + value);
+      }
     }
   };
 
@@ -205,44 +218,32 @@ export default function LookupScreen() {
         />
       </View>
 
-      {/* Material & Flange Selection */}
-      <View style={styles.selectionGrid}>
-        <View style={styles.selectionItem}>
-          <Text style={styles.selectionLabel}>Material</Text>
-          <TouchableOpacity style={styles.dropdown}>
-            <Text style={styles.dropdownText}>{db[material]?.name}</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.selectionItem}>
-          <Text style={styles.selectionLabel}>Flange Height (mm)</Text>
-          <TextInput
-            style={styles.flangeTextInput}
-            value={flangeInput}
-            onChangeText={setFlangeInput}
-            keyboardType="decimal-pad"
-            placeholder="e.g. 15"
-            placeholderTextColor="#555"
-          />
-          <View style={styles.flangeChipsRow}>
-            {availableFlanges.map(f => (
-              <TouchableOpacity
-                key={f}
-                style={[styles.flangeChip, flangeLength === f && styles.flangeChipActive]}
-                onPress={() => setFlangeInput(f.toString())}
-              >
-                <Text style={[styles.flangeChipText, flangeLength === f && styles.flangeChipTextActive]}>
-                  {f}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
+      {/* Material */}
+      <View style={styles.materialRow}>
+        <Text style={styles.selectionLabel}>Material</Text>
+        <TouchableOpacity style={styles.dropdown}>
+          <Text style={styles.dropdownText}>{db[material]?.name}</Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Bend Length Input Display */}
-      <View style={styles.inputDisplay}>
-        <Text style={styles.inputLabel}>Bend Length (mm)</Text>
-        <Text style={styles.inputValue}>{bendLengthInput || '0'}</Text>
+      {/* Dual Input: Bend Length + Flange Height */}
+      <View style={styles.dualInputRow}>
+        <TouchableOpacity
+          style={[styles.inputDisplay, styles.inputDisplayHalf, activeInput === 'bendLength' && styles.inputDisplayActive]}
+          onPress={() => setActiveInput('bendLength')}
+          activeOpacity={1}
+        >
+          <Text style={styles.inputLabel}>Bend Length (mm)</Text>
+          <Text style={styles.inputValue}>{bendLengthInput || '0'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.inputDisplay, styles.inputDisplayHalf, activeInput === 'flangeHeight' && styles.inputDisplayActive]}
+          onPress={() => setActiveInput('flangeHeight')}
+          activeOpacity={1}
+        >
+          <Text style={styles.inputLabel}>Flange Height (mm)</Text>
+          <Text style={styles.inputValue}>{flangeInput || '0'}</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Numpad */}
@@ -630,13 +631,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     overflow: 'hidden',
   },
-  selectionGrid: {
-    flexDirection: 'row',
-    gap: 12,
+  materialRow: {
     marginBottom: 16,
-  },
-  selectionItem: {
-    flex: 1,
   },
   selectionLabel: {
     fontSize: 11,
@@ -644,6 +640,18 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 1,
     marginBottom: 6,
+  },
+  dualInputRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  inputDisplayHalf: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  inputDisplayActive: {
+    borderColor: '#f59e0b',
   },
   dropdown: {
     backgroundColor: '#252542',
@@ -655,43 +663,6 @@ const styles = StyleSheet.create({
   dropdownText: {
     color: '#fff',
     fontSize: 14,
-  },
-  flangeTextInput: {
-    backgroundColor: '#252542',
-    borderWidth: 2,
-    borderColor: '#3d3d5c',
-    borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  flangeChipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  flangeChip: {
-    backgroundColor: '#1a1a2e',
-    borderWidth: 1,
-    borderColor: '#3d3d5c',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  flangeChipActive: {
-    backgroundColor: '#f59e0b',
-    borderColor: '#f59e0b',
-  },
-  flangeChipText: {
-    color: '#888',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  flangeChipTextActive: {
-    color: '#1a1a2e',
   },
   inputDisplay: {
     backgroundColor: '#0d0d1a',
