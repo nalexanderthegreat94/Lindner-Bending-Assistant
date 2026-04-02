@@ -11,7 +11,7 @@ export default function TabLayout() {
   const { width, height } = useWindowDimensions();
   const isTablet = Math.min(width, height) >= 600;
 
-  const tabBarBaseHeight = isTablet ? 84 : 56;
+  const tabBarBaseHeight = isTablet ? 84 : 70;
   const iconSize = isTablet ? 28 : 22;
 
   return (
@@ -36,6 +36,7 @@ export default function TabLayout() {
           marginHorizontal: 4,
           borderWidth: 1,
           borderColor: '#1e1e36',
+          overflow: 'hidden',
         },
         tabBarLabelStyle: {
           fontSize: isTablet ? 20 : 13,
