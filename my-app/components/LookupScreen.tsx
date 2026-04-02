@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { Image } from 'react-native';
 import {
   View,
   Text,
@@ -98,10 +99,20 @@ export default function LookupScreen() {
     }
   };
 
+  const MACHINE_MAX_BEND = 4040;
+
   const calculateResult = () => {
     const bendLen = parseFloat(bendLengthInput);
     if (isNaN(bendLen) || bendLen <= 0) {
       setResult({ error: 'Enter a valid bend length' });
+      return;
+    }
+    if (bendLen > MACHINE_MAX_BEND) {
+      setResult({
+        error: 'EXCEEDS MACHINE LIMIT',
+        notPossible: true,
+        maxBendLength: MACHINE_MAX_BEND,
+      });
       return;
     }
     const res = findCorrection(material, flangeLength, bendLen, db);
@@ -175,10 +186,12 @@ export default function LookupScreen() {
     <>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Schroeder Bend Calculator</Text>
-        <View style={styles.headerIcon}>
-          <Text style={styles.headerIconText}>◢</Text>
-        </View>
+        <Text style={styles.headerTitle}>Schroeder Bend Assistant</Text>
+        <Image
+          source={require('../assets/images/icon.png')}
+          style={styles.headerIcon}
+          resizeMode="contain"
+        />
       </View>
 
       {/* Material & Flange Selection */}
@@ -215,6 +228,7 @@ export default function LookupScreen() {
                 onPress={() => handleNumpadPress(key)}
                 style={[
                   styles.numpadButton,
+                  isLandscape && styles.numpadButtonLandscape,
                   key === 'C' && styles.numpadButtonClear,
                   key === '⌫' && styles.numpadButtonDelete,
                 ]}
@@ -226,7 +240,7 @@ export default function LookupScreen() {
         ))}
         <TouchableOpacity
           onPress={() => handleNumpadPress('GO')}
-          style={styles.numpadButtonCalculate}
+          style={[styles.numpadButtonCalculate, isLandscape && styles.numpadButtonLandscape]}
         >
           <Text style={styles.numpadButtonCalculateText}>Calculate</Text>
         </TouchableOpacity>
@@ -281,9 +295,9 @@ export default function LookupScreen() {
               {result.isExtrapolated && (
                 <View style={styles.resultWarning}>
                   <Text style={styles.resultWarningText}>
-                    ⚠ EXTRAPOLATED — {result.extrapolatedAbove
-                      ? `Above maximum tested (${result.maxTested}mm)`
-                      : `Below minimum tested (${result.minTested}mm)`}. Use with caution.
+                    ⚠ {result.extrapolatedAbove
+                      ? `Above maximum tested range (${result.maxTested}mm)`
+                      : `Below minimum tested range (${result.minTested}mm)`}. Use with caution.
                   </Text>
                 </View>
               )}
@@ -561,22 +575,17 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 26,
     fontWeight: '800',
     color: '#1a1a2e',
-    letterSpacing: -0.3,
+    letterSpacing: -0.5,
+    flex: 1,
   },
   headerIcon: {
-    width: 48,
-    height: 48,
-    backgroundColor: '#1a1a2e',
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerIconText: {
-    fontSize: 24,
-    color: '#f59e0b',
+    width: 52,
+    height: 52,
+    borderRadius: 10,
+    overflow: 'hidden',
   },
   selectionGrid: {
     flexDirection: 'row',
@@ -663,6 +672,9 @@ const styles = StyleSheet.create({
   numpadButton: {
     flex: 1,
     height: 64,
+  },
+  numpadButtonLandscape: {
+    height: 80,
     backgroundColor: '#252542',
     borderRadius: 8,
     justifyContent: 'center',
