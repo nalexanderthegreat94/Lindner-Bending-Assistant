@@ -9,6 +9,20 @@ export interface BendDataPoint {
 }
 
 /**
+ * Complete dataset for a material with specific thickness and flange configuration
+ */
+export interface BendDataset {
+  id: string; // Unique identifier
+  material: string; // e.g., "Aluminum"
+  thickness: number; // e.g., 2
+  thicknessUnit: string; // "mm" or "gauge"
+  flange: number; // mm
+  label: string; // Display name
+  data: BendDataPoint[]; // Array of bend points
+  createdAt: number; // Timestamp
+}
+
+/**
  * Data for a specific flange length
  */
 export interface FlangeData {

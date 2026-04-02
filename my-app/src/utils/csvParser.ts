@@ -42,7 +42,7 @@ export function parseCSV(
     if (!isNaN(bendLength) && !isNaN(bendCorrection) && !isNaN(crown)) {
       dataPoints.push({
         bendLength,
-        bendCorrection,
+        correction: bendCorrection,
         crown,
       });
     }
@@ -77,7 +77,7 @@ export function datasetToCSV(dataset: BendDataset): string {
 
   // Data rows
   for (const point of dataset.data) {
-    lines.push(`${point.bendLength},${point.bendCorrection},${point.crown}`);
+    lines.push(`${point.bendLength},${point.correction},${point.crown}`);
   }
 
   return lines.join('\n');

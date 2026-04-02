@@ -188,7 +188,7 @@ export default function LookupScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Schroeder Bend Assistant</Text>
         <Image
-          source={require('../assets/images/icon.png')}
+          source={require('../assets/images/android-ui-icon.png')}
           style={styles.headerIcon}
           resizeMode="contain"
         />
@@ -673,10 +673,13 @@ const styles = StyleSheet.create({
   numpadButton: {
     flex: 1,
     height: 64,
+    backgroundColor: '#252542',
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   numpadButtonLandscape: {
     height: 80,
-    backgroundColor: '#252542',
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
