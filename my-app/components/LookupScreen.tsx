@@ -33,6 +33,8 @@ export default function LookupScreen() {
   const [material] = useState('2mm_aluminum');
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const isLandscape = screenWidth > screenHeight;
+  const isTablet = Math.min(screenWidth, screenHeight) >= 600;
+  const styles = useMemo(() => makeStyles(isTablet), [isTablet]);
 
   const availableFlanges = useMemo(() => {
     const mat = db[material];
@@ -598,7 +600,8 @@ export default function LookupScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(t: boolean) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0d0d1a',
@@ -632,16 +635,16 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   headerTitle: {
-    fontSize: 30,
+    fontSize: t ? 30 : 20,
     fontWeight: '800',
     color: '#1a1a2e',
     letterSpacing: -0.5,
     flex: 1,
   },
   headerIcon: {
-    width: 68,
-    height: 68,
-    borderRadius: 14,
+    width: t ? 68 : 46,
+    height: t ? 68 : 46,
+    borderRadius: 10,
     overflow: 'hidden',
   },
   materialRow: {
@@ -682,7 +685,7 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#3d3d5c',
     borderRadius: 12,
-    padding: 20,
+    padding: t ? 20 : 12,
     marginBottom: 16,
   },
   inputLabel: {
@@ -690,14 +693,14 @@ const styles = StyleSheet.create({
     color: '#888',
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   inputValue: {
-    fontSize: 42,
+    fontSize: t ? 42 : 28,
     fontWeight: '700',
     color: '#fff',
     textAlign: 'right',
-    minHeight: 50,
+    minHeight: t ? 50 : 34,
     fontFamily: 'monospace',
   },
   numpadContainer: {
@@ -710,14 +713,14 @@ const styles = StyleSheet.create({
   },
   numpadButton: {
     flex: 1,
-    height: 64,
+    height: t ? 64 : 50,
     backgroundColor: '#252542',
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
   numpadButtonLandscape: {
-    height: 80,
+    height: t ? 80 : 60,
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
@@ -729,19 +732,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366f1',
   },
   numpadButtonText: {
-    fontSize: 22,
+    fontSize: t ? 22 : 18,
     fontWeight: '600',
     color: '#fff',
   },
   numpadButtonCalculate: {
-    height: 64,
+    height: t ? 64 : 50,
     backgroundColor: '#4ade80',
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
   numpadButtonCalculateText: {
-    fontSize: 20,
+    fontSize: t ? 20 : 16,
     fontWeight: '700',
     color: '#fff',
     letterSpacing: 1,
@@ -767,12 +770,12 @@ const styles = StyleSheet.create({
     borderColor: '#4a4a6a',
   },
   resultNoDataIcon: {
-    fontSize: 32,
+    fontSize: t ? 32 : 22,
     color: '#a5b4fc',
     fontWeight: '800',
   },
   resultNoDataTitle: {
-    fontSize: 28,
+    fontSize: t ? 28 : 20,
     fontWeight: '800',
     color: '#a5b4fc',
   },
@@ -789,11 +792,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   resultErrorIcon: {
-    fontSize: 32,
+    fontSize: t ? 32 : 22,
     color: '#ef4444',
   },
   resultErrorTitle: {
-    fontSize: 28,
+    fontSize: t ? 28 : 20,
     fontWeight: '800',
     color: '#ef4444',
   },
@@ -838,7 +841,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
   resultCorrection: {
-    fontSize: 48,
+    fontSize: t ? 48 : 34,
     fontWeight: '800',
     color: '#4ade80',
     marginTop: 4,
@@ -847,7 +850,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   resultCrownValue: {
-    fontSize: 32,
+    fontSize: t ? 32 : 22,
     fontWeight: '700',
     color: '#60a5fa',
     marginTop: 4,
@@ -1131,4 +1134,6 @@ const styles = StyleSheet.create({
   unitButtonTextActive: {
     color: '#1a1a2e',
   },
-});
+  })
+}
+
