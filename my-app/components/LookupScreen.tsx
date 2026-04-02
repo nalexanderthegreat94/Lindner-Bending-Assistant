@@ -567,7 +567,8 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#f59e0b',
     borderRadius: 12,
-    padding: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     marginBottom: 16,
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -575,16 +576,16 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   headerTitle: {
-    fontSize: 26,
+    fontSize: 30,
     fontWeight: '800',
     color: '#1a1a2e',
     letterSpacing: -0.5,
     flex: 1,
   },
   headerIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 10,
+    width: 60,
+    height: 60,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   selectionGrid: {
@@ -693,7 +694,7 @@ const styles = StyleSheet.create({
   },
   numpadButtonCalculate: {
     height: 64,
-    backgroundColor: '#10b981',
+    backgroundColor: '#4ade80',
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
