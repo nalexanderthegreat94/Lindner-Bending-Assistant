@@ -106,9 +106,6 @@ export default function DataBrowserScreen() {
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>BROWSE DATA</Text>
-          <Text style={styles.headerSubtitle} numberOfLines={1}>
-            {material?.name ?? ''}
-          </Text>
         </View>
         {isAdmin ? (
           <TouchableOpacity style={styles.adminBadge} onPress={() => setIsAdmin(false)}>
