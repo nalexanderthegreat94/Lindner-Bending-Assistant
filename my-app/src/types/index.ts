@@ -69,6 +69,13 @@ export interface CorrectionResult {
   maxTested?: number;
   warning?: string;
   
+  // Flange interpolation metadata
+  isFlangeInterpolated?: boolean;
+  flangeInterpolatedBetween?: [number, number];
+  isFlangeCapped?: boolean;
+  flangeUsed?: number;
+  flangeTooSmall?: boolean;
+
   // Error case
   error?: string;
   reason?: string;

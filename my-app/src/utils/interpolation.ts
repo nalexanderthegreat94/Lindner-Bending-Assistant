@@ -65,36 +65,14 @@ function linearRegressionExtrapolate(
 }
 
 /**
- * Find bend correction using interpolation/extrapolation.
- * Pass a custom `db` (e.g. merged user data) or omit to use the built-in MATERIALS_DB.
+ * Resolve bend length against a specific flange dataset.
+ * Handles "not possible" entries, exact matches, interpolation, and extrapolation.
  */
-export function findCorrection(
-  materialKey: string,
+function resolveBendLength(
+  flangeData: BendDataPoint[],
   flangeLength: number,
-  bendLength: number,
-  db: MaterialsDatabase = MATERIALS_DB
+  bendLength: number
 ): CorrectionResult {
-  const material = db[materialKey];
-  if (!material) return { error: "Material not found" };
-
-  const flangeData = material.flanges[flangeLength];
-  if (!flangeData) {
-    // Flange length not in database
-    const availableFlanges = Object.keys(material.flanges)
-      .map(Number)
-      .sort((a, b) => a - b);
-    const minFlange = availableFlanges[0];
-
-    if (flangeLength < minFlange) {
-      return {
-        error: "BEND NOT POSSIBLE",
-        reason: `Flange height ${flangeLength}mm is too short. Minimum flange for this material is ${minFlange}mm.`,
-        notPossible: true
-      };
-    }
-    return { error: `No data for ${flangeLength}mm flange` };
-  }
-
   // Filter out "not possible" entries for interpolation
   const validData = flangeData.filter((d) => d.correction !== null);
 
@@ -103,7 +81,7 @@ export function findCorrection(
     return {
       error: "BEND NOT POSSIBLE",
       reason: `${flangeLength}mm flange is too short for any bend length with this material.`,
-      notPossible: true
+      notPossible: true,
     };
   }
 
@@ -118,7 +96,7 @@ export function findCorrection(
         error: "BEND NOT POSSIBLE",
         reason: `${flangeLength}mm flange cannot hold a ${bendLength}mm bend. Maximum bend length for this flange is ${maxPossibleBend}mm.`,
         notPossible: true,
-        maxBendLength: maxPossibleBend
+        maxBendLength: maxPossibleBend,
       };
     }
   }
@@ -137,7 +115,7 @@ export function findCorrection(
       const correctionPoints = [
         { x: point1.bendLength, y: point1.correction || 0 },
         { x: point2.bendLength, y: point2.correction || 0 },
-        { x: point3.bendLength, y: point3.correction || 0 }
+        { x: point3.bendLength, y: point3.correction || 0 },
       ];
 
       const crownPointCount = Math.min(6, validData.length);
@@ -145,7 +123,7 @@ export function findCorrection(
         .slice(0, crownPointCount)
         .map((d) => ({
           x: d.bendLength,
-          y: d.crown || 0
+          y: d.crown || 0,
         }));
 
       const extrapCorrection = quadraticExtrapolate(bendLength, correctionPoints);
@@ -159,13 +137,13 @@ export function findCorrection(
         bendLength,
         extrapolatedFrom: [point1.bendLength, point2.bendLength, point3.bendLength],
         minTested: minBend,
-        warning: `Extrapolated below minimum tested (${minBend}mm)`
+        warning: `Extrapolated below minimum tested (${minBend}mm)`,
       };
     }
 
     return {
       error: `Below minimum tested (${minBend}mm)`,
-      suggestion: validData[0]
+      suggestion: validData[0],
     };
   }
 
@@ -179,7 +157,7 @@ export function findCorrection(
       const correctionPoints = [
         { x: point1.bendLength, y: point1.correction || 0 },
         { x: point2.bendLength, y: point2.correction || 0 },
-        { x: point3.bendLength, y: point3.correction || 0 }
+        { x: point3.bendLength, y: point3.correction || 0 },
       ];
 
       const crownPointCount = Math.min(6, validData.length);
@@ -187,7 +165,7 @@ export function findCorrection(
         .slice(-crownPointCount)
         .map((d) => ({
           x: d.bendLength,
-          y: d.crown || 0
+          y: d.crown || 0,
         }));
 
       const extrapCorrection = quadraticExtrapolate(bendLength, correctionPoints);
@@ -202,13 +180,13 @@ export function findCorrection(
         bendLength,
         extrapolatedFrom: [point1.bendLength, point2.bendLength, point3.bendLength],
         maxTested: maxBend,
-        warning: `Extrapolated above maximum tested (${maxBend}mm)`
+        warning: `Extrapolated above maximum tested (${maxBend}mm)`,
       };
     }
 
     return {
       error: `Above maximum tested (${maxBend}mm)`,
-      suggestion: validData[validData.length - 1]
+      suggestion: validData[validData.length - 1],
     };
   }
 
@@ -219,7 +197,7 @@ export function findCorrection(
       correction: exact.correction || 0,
       crown: exact.crown || 0,
       isExact: true,
-      bendLength
+      bendLength,
     };
   }
 
@@ -257,7 +235,7 @@ export function findCorrection(
       bendLength,
       interpolatedBetween: [lower.bendLength, upper.bendLength],
       lowerPoint: lower,
-      upperPoint: upper
+      upperPoint: upper,
     };
   }
 
@@ -265,10 +243,111 @@ export function findCorrection(
 }
 
 /**
+ * Find bend correction using interpolation/extrapolation.
+ *
+ * Flange zone logic:
+ *   - Below min tested flange  → hard stop (not possible)
+ *   - Exact tested flange      → use that flange's data directly
+ *   - Between tested flanges   → linearly blend results from adjacent tested flanges
+ *   - Above max tested flange  → cap at max tested flange (with notice)
+ *
+ * Pass a custom `db` (e.g. merged user data) or omit to use the built-in MATERIALS_DB.
+ */
+export function findCorrection(
+  materialKey: string,
+  flangeLength: number,
+  bendLength: number,
+  db: MaterialsDatabase = MATERIALS_DB
+): CorrectionResult {
+  const material = db[materialKey];
+  if (!material) return { error: "Material not found" };
+
+  const availableFlanges = Object.keys(material.flanges)
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  if (availableFlanges.length === 0) {
+    return { error: "No flange data for this material" };
+  }
+
+  const minFlange = availableFlanges[0];
+  const maxFlange = availableFlanges[availableFlanges.length - 1];
+
+  // Zone 1: below minimum tested flange — hard stop
+  if (flangeLength < minFlange) {
+    return {
+      error: "BEND NOT POSSIBLE",
+      reason: `Flange height ${flangeLength}mm is too short. Minimum flange for this material is ${minFlange}mm.`,
+      notPossible: true,
+      flangeTooSmall: true,
+    };
+  }
+
+  // Zone 3: above maximum tested flange — cap at max, show notice
+  if (flangeLength > maxFlange) {
+    const result = resolveBendLength(material.flanges[maxFlange], maxFlange, bendLength);
+    if (result.error) return result;
+    return {
+      ...result,
+      isFlangeCapped: true,
+      flangeUsed: maxFlange,
+    };
+  }
+
+  // Exact tested flange match
+  if (material.flanges[flangeLength] !== undefined) {
+    return resolveBendLength(material.flanges[flangeLength], flangeLength, bendLength);
+  }
+
+  // Zone 2: between two tested flanges — linearly blend
+  let lowerFlange = availableFlanges[0];
+  let upperFlange = availableFlanges[availableFlanges.length - 1];
+  for (let i = 0; i < availableFlanges.length - 1; i++) {
+    if (availableFlanges[i] < flangeLength && availableFlanges[i + 1] > flangeLength) {
+      lowerFlange = availableFlanges[i];
+      upperFlange = availableFlanges[i + 1];
+      break;
+    }
+  }
+
+  const lowerResult = resolveBendLength(material.flanges[lowerFlange], lowerFlange, bendLength);
+  const upperResult = resolveBendLength(material.flanges[upperFlange], upperFlange, bendLength);
+
+  // If both are "not possible", return the upper (more restrictive) error
+  if (lowerResult.error && upperResult.error) return upperResult;
+  // If only one errored, return the valid one with interpolation metadata
+  if (lowerResult.error) {
+    return { ...upperResult, isFlangeInterpolated: true, flangeInterpolatedBetween: [lowerFlange, upperFlange] };
+  }
+  if (upperResult.error) {
+    return { ...lowerResult, isFlangeInterpolated: true, flangeInterpolatedBetween: [lowerFlange, upperFlange] };
+  }
+
+  // Both valid — linearly blend by flange position
+  const t = (flangeLength - lowerFlange) / (upperFlange - lowerFlange);
+  const blendedCorrection = (lowerResult.correction || 0) * (1 - t) + (upperResult.correction || 0) * t;
+  const blendedCrown = (lowerResult.crown || 0) * (1 - t) + (upperResult.crown || 0) * t;
+
+  return {
+    correction: Math.round(blendedCorrection * 100) / 100,
+    crown: Math.round(blendedCrown * 100) / 100,
+    isExact: false,
+    bendLength,
+    isFlangeInterpolated: true,
+    flangeInterpolatedBetween: [lowerFlange, upperFlange],
+    // Propagate bend-length extrapolation flags if either source was extrapolated
+    isExtrapolated: lowerResult.isExtrapolated || upperResult.isExtrapolated,
+    extrapolatedAbove: lowerResult.extrapolatedAbove || upperResult.extrapolatedAbove,
+    minTested: lowerResult.minTested ?? upperResult.minTested,
+    maxTested: lowerResult.maxTested ?? upperResult.maxTested,
+  };
+}
+
+/**
  * Get available flanges for a material
  */
-export function getAvailableFlanges(materialKey: string): number[] {
-  const material = MATERIALS_DB[materialKey];
+export function getAvailableFlanges(materialKey: string, db: MaterialsDatabase = MATERIALS_DB): number[] {
+  const material = db[materialKey];
   if (!material) return [];
   return Object.keys(material.flanges)
     .map(Number)

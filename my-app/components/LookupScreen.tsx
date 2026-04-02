@@ -40,7 +40,8 @@ export default function LookupScreen() {
     return Object.keys(mat.flanges).map(Number).sort((a, b) => a - b);
   }, [db, material]);
 
-  const [flangeLength, setFlangeLength] = useState(10);
+  const [flangeInput, setFlangeInput] = useState('10');
+  const flangeLength = parseFloat(flangeInput) || 0;
   const [bendLengthInput, setBendLengthInput] = useState('');
   const [result, setResult] = useState<CorrectionResult | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -78,13 +79,23 @@ export default function LookupScreen() {
     ];
   }, [db, addNewFormState.selectedMaterialKey]);
 
+  // For the chart, show the nearest tested flange when the entered value is between or above tested values
+  const chartFlange = useMemo(() => {
+    if (availableFlanges.length === 0) return 0;
+    if (availableFlanges.includes(flangeLength)) return flangeLength;
+    return availableFlanges.reduce((prev, curr) =>
+      Math.abs(curr - flangeLength) < Math.abs(prev - flangeLength) ? curr : prev,
+      availableFlanges[0]
+    );
+  }, [availableFlanges, flangeLength]);
+
   const chartData = useMemo(() => {
     const mat = db[material];
-    if (!mat || !mat.flanges[flangeLength]) return [];
-    return mat.flanges[flangeLength]
+    if (!mat || !mat.flanges[chartFlange]) return [];
+    return mat.flanges[chartFlange]
       .filter(d => d.correction !== null)
       .map(d => ({ bendLength: d.bendLength, correction: d.correction, crown: d.crown }));
-  }, [db, material, flangeLength]);
+  }, [db, material, chartFlange]);
 
   const handleNumpadPress = (value: string) => {
     if (value === 'C') {
@@ -134,7 +145,7 @@ export default function LookupScreen() {
 
   const loadFromHistory = (entry: HistoryEntry) => {
     setBendLengthInput(entry.bendLength.toString());
-    setFlangeLength(entry.flange);
+    setFlangeInput(entry.flange.toString());
     const res = findCorrection(material, entry.flange, entry.bendLength, db);
     setResult(res);
   };
@@ -203,12 +214,28 @@ export default function LookupScreen() {
           </TouchableOpacity>
         </View>
         <View style={styles.selectionItem}>
-          <Text style={styles.selectionLabel}>Flange Height</Text>
-          <DropdownPicker
-            options={availableFlanges.map(f => ({ label: `${f}mm`, value: f.toString() }))}
-            selectedValue={flangeLength.toString()}
-            onSelect={(val) => setFlangeLength(Number(val))}
+          <Text style={styles.selectionLabel}>Flange Height (mm)</Text>
+          <TextInput
+            style={styles.flangeTextInput}
+            value={flangeInput}
+            onChangeText={setFlangeInput}
+            keyboardType="decimal-pad"
+            placeholder="e.g. 15"
+            placeholderTextColor="#555"
           />
+          <View style={styles.flangeChipsRow}>
+            {availableFlanges.map(f => (
+              <TouchableOpacity
+                key={f}
+                style={[styles.flangeChip, flangeLength === f && styles.flangeChipActive]}
+                onPress={() => setFlangeInput(f.toString())}
+              >
+                <Text style={[styles.flangeChipText, flangeLength === f && styles.flangeChipTextActive]}>
+                  {f}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       </View>
 
@@ -301,6 +328,20 @@ export default function LookupScreen() {
                   </Text>
                 </View>
               )}
+              {result.isFlangeInterpolated && result.flangeInterpolatedBetween && (
+                <View style={styles.resultFlangeInfo}>
+                  <Text style={styles.resultFlangeInfoText}>
+                    ↕ Flange interpolated between {result.flangeInterpolatedBetween[0]}mm and {result.flangeInterpolatedBetween[1]}mm tested data
+                  </Text>
+                </View>
+              )}
+              {result.isFlangeCapped && result.flangeUsed !== undefined && (
+                <View style={styles.resultFlangeInfo}>
+                  <Text style={styles.resultFlangeInfoText}>
+                    ↑ Flange above max tested ({result.flangeUsed}mm) — using {result.flangeUsed}mm data
+                  </Text>
+                </View>
+              )}
               {result.isExact && (
                 <View style={styles.resultExact}>
                   <Text style={styles.resultExactText}>✓ Exact match from test data</Text>
@@ -322,6 +363,7 @@ export default function LookupScreen() {
       >
         <Text style={styles.chartToggleText}>
           {showChart ? '▼' : '▶'} Correction Curve
+          {chartFlange !== flangeLength && chartFlange > 0 ? ` (${chartFlange}mm flange)` : ''}
         </Text>
       </TouchableOpacity>
       {showChart && chartData.length > 0 && (
@@ -614,29 +656,41 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
   },
-  flangeButtonsContainer: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  flangeButton: {
+  flangeTextInput: {
     backgroundColor: '#252542',
     borderWidth: 2,
     borderColor: '#3d3d5c',
     borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 8,
   },
-  flangeButtonActive: {
+  flangeChipsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  flangeChip: {
+    backgroundColor: '#1a1a2e',
+    borderWidth: 1,
+    borderColor: '#3d3d5c',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  flangeChipActive: {
     backgroundColor: '#f59e0b',
     borderColor: '#f59e0b',
   },
-  flangeButtonText: {
+  flangeChipText: {
     color: '#888',
     fontSize: 12,
     fontWeight: '600',
   },
-  flangeButtonTextActive: {
+  flangeChipTextActive: {
     color: '#1a1a2e',
   },
   inputDisplay: {
@@ -814,6 +868,18 @@ const styles = StyleSheet.create({
   resultInfoText: {
     fontSize: 12,
     color: '#a5a5c5',
+  },
+  resultFlangeInfo: {
+    marginTop: 8,
+    padding: 10,
+    backgroundColor: '#1a1a3d',
+    borderWidth: 1,
+    borderColor: '#3d3d7c',
+    borderRadius: 8,
+  },
+  resultFlangeInfoText: {
+    fontSize: 12,
+    color: '#a5b4fc',
   },
   resultExact: {
     marginTop: 12,
