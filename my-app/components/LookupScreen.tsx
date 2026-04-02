@@ -175,7 +175,7 @@ export default function LookupScreen() {
     <>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Schroeder Bend Calculator</Text>
+        <Text style={styles.headerTitle}>Lindner Bend Calculator</Text>
         <View style={styles.headerIcon}>
           <Text style={styles.headerIconText}>◢</Text>
         </View>
