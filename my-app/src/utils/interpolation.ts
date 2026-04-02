@@ -262,9 +262,11 @@ export function findCorrection(
   const material = db[materialKey];
   if (!material) return { error: "Material not found" };
 
+  // Only consider flanges that have at least one valid (non-null) data point
   const availableFlanges = Object.keys(material.flanges)
     .map(Number)
-    .sort((a, b) => a - b);
+    .sort((a, b) => a - b)
+    .filter(f => material.flanges[f].some(d => d.correction !== null));
 
   if (availableFlanges.length === 0) {
     return { error: "No flange data for this material" };
