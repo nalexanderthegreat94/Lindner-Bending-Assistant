@@ -567,7 +567,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#f59e0b',
     borderRadius: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
     paddingHorizontal: 16,
     marginBottom: 16,
     flexDirection: 'row',
@@ -583,9 +583,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 12,
+    width: 68,
+    height: 68,
+    borderRadius: 14,
     overflow: 'hidden',
   },
   selectionGrid: {
