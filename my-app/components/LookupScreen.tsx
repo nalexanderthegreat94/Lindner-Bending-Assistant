@@ -439,10 +439,6 @@ export default function LookupScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Footer */}
-      <Text style={styles.footer}>
-        Data: 2mm/12ga 3003 Aluminum • More materials coming soon
-      </Text>
     </>
   );
 
