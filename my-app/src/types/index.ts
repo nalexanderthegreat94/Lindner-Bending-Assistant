@@ -75,6 +75,7 @@ export interface CorrectionResult {
   isFlangeCapped?: boolean;
   flangeUsed?: number;
   flangeTooSmall?: boolean;
+  flangeNoData?: boolean;      // below tested range but not confirmed impossible
 
   // Error case
   error?: string;

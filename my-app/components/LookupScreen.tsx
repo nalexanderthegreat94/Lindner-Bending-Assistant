@@ -278,16 +278,29 @@ export default function LookupScreen() {
       {result && (
         <View style={[
           styles.resultContainer,
-          result.error ? styles.resultError : styles.resultSuccess,
+          result.flangeNoData ? styles.resultNoData
+            : result.error ? styles.resultError
+            : styles.resultSuccess,
         ]}>
           {result.error ? (
             <View>
-              {result.notPossible ? (
+              {result.flangeNoData ? (
+                <>
+                  <View style={styles.resultErrorHeader}>
+                    <Text style={styles.resultNoDataIcon}>?</Text>
+                    <Text style={styles.resultNoDataTitle}>{result.error}</Text>
+                  </View>
+                  <Text style={styles.resultNoDataReason}>{result.reason}</Text>
+                </>
+              ) : result.notPossible ? (
                 <>
                   <View style={styles.resultErrorHeader}>
                     <Text style={styles.resultErrorIcon}>⊘</Text>
                     <Text style={styles.resultErrorTitle}>{result.error}</Text>
                   </View>
+                  {result.reason && (
+                    <Text style={styles.resultErrorReason}>{result.reason}</Text>
+                  )}
                   {result.maxBendLength && (
                     <View style={styles.resultHint}>
                       <Text style={styles.resultHintText}>
@@ -747,6 +760,27 @@ const styles = StyleSheet.create({
     backgroundColor: '#2d1f1f',
     borderWidth: 2,
     borderColor: '#5c3d3d',
+  },
+  resultNoData: {
+    backgroundColor: '#1e1e2e',
+    borderWidth: 2,
+    borderColor: '#4a4a6a',
+  },
+  resultNoDataIcon: {
+    fontSize: 32,
+    color: '#a5b4fc',
+    fontWeight: '800',
+  },
+  resultNoDataTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#a5b4fc',
+  },
+  resultNoDataReason: {
+    color: '#c7d2fe',
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 10,
   },
   resultErrorHeader: {
     flexDirection: 'row',

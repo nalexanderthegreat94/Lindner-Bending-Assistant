@@ -246,7 +246,8 @@ function resolveBendLength(
  * Find bend correction using interpolation/extrapolation.
  *
  * Flange zone logic:
- *   - Below min tested flange  → hard stop (not possible)
+ *   - Confirmed-impossible flange or below all DB entries → BEND NOT POSSIBLE
+ *   - Below min working flange but not confirmed impossible → NO DATA (data gap)
  *   - Exact tested flange      → use that flange's data directly
  *   - Between tested flanges   → linearly blend results from adjacent tested flanges
  *   - Above max tested flange  → cap at max tested flange (with notice)
@@ -262,26 +263,48 @@ export function findCorrection(
   const material = db[materialKey];
   if (!material) return { error: "Material not found" };
 
-  // Only consider flanges that have at least one valid (non-null) data point
-  const availableFlanges = Object.keys(material.flanges)
+  const allFlanges = Object.keys(material.flanges)
     .map(Number)
-    .sort((a, b) => a - b)
-    .filter(f => material.flanges[f].some(d => d.correction !== null));
+    .sort((a, b) => a - b);
 
-  if (availableFlanges.length === 0) {
+  // Flanges with at least one valid data point — the ones we can actually calculate from
+  const workingFlanges = allFlanges.filter(
+    f => material.flanges[f].some(d => d.correction !== null)
+  );
+  // Flanges explicitly recorded as all-null — confirmed impossible
+  const confirmedImpossibleFlanges = allFlanges.filter(
+    f => material.flanges[f].every(d => d.correction === null)
+  );
+
+  if (workingFlanges.length === 0) {
     return { error: "No flange data for this material" };
   }
 
-  const minFlange = availableFlanges[0];
-  const maxFlange = availableFlanges[availableFlanges.length - 1];
+  const minFlange = workingFlanges[0];
+  const maxFlange = workingFlanges[workingFlanges.length - 1];
 
-  // Zone 1: below minimum tested flange — hard stop
+  // Zone 1: below minimum working flange
   if (flangeLength < minFlange) {
+    // Confirmed impossible if: flange exactly matches an all-null entry,
+    // or it's below the lowest entry of any kind in the database
+    const isConfirmedImpossible =
+      confirmedImpossibleFlanges.includes(flangeLength) ||
+      (allFlanges.length > 0 && flangeLength < allFlanges[0]);
+
+    if (isConfirmedImpossible) {
+      return {
+        error: "BEND NOT POSSIBLE",
+        reason: `${flangeLength}mm flange is confirmed not possible for this material.`,
+        notPossible: true,
+        flangeTooSmall: true,
+      };
+    }
+
+    // Otherwise it's a data gap — we haven't tested this flange, not that it can't work
     return {
-      error: "BEND NOT POSSIBLE",
-      reason: `Flange height ${flangeLength}mm is too short. Minimum flange for this material is ${minFlange}mm.`,
-      notPossible: true,
-      flangeTooSmall: true,
+      error: "NO DATA",
+      reason: `Flange height ${flangeLength}mm is below the minimum tested (${minFlange}mm). No estimate is available — try a larger flange or add test data.`,
+      flangeNoData: true,
     };
   }
 
@@ -301,13 +324,13 @@ export function findCorrection(
     return resolveBendLength(material.flanges[flangeLength], flangeLength, bendLength);
   }
 
-  // Zone 2: between two tested flanges — linearly blend
-  let lowerFlange = availableFlanges[0];
-  let upperFlange = availableFlanges[availableFlanges.length - 1];
-  for (let i = 0; i < availableFlanges.length - 1; i++) {
-    if (availableFlanges[i] < flangeLength && availableFlanges[i + 1] > flangeLength) {
-      lowerFlange = availableFlanges[i];
-      upperFlange = availableFlanges[i + 1];
+  // Zone 2: between two working flanges — linearly blend
+  let lowerFlange = workingFlanges[0];
+  let upperFlange = workingFlanges[workingFlanges.length - 1];
+  for (let i = 0; i < workingFlanges.length - 1; i++) {
+    if (workingFlanges[i] < flangeLength && workingFlanges[i + 1] > flangeLength) {
+      lowerFlange = workingFlanges[i];
+      upperFlange = workingFlanges[i + 1];
       break;
     }
   }
