@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Lindner Bend Calculator",
-    "slug": "lindner-bend-calculator",
+    "name": "Lindner Bend Assistant",
+    "slug": "lindner-bend-assistant",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
