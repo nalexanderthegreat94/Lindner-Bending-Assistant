@@ -8,6 +8,7 @@ import {
   Modal,
   TextInput,
   Alert,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBendData } from '@/src/context/BendDataContext';
@@ -17,6 +18,9 @@ const ADMIN_PASSWORD = 'admin';
 
 export default function DataBrowserScreen() {
   const { db, deleteDataPoint } = useBendData();
+  const { width, height } = useWindowDimensions();
+  const isTablet = Math.min(width, height) >= 600;
+  const styles = useMemo(() => makeStyles(isTablet), [isTablet]);
 
   // ── Material selection ────────────────────────────────────────────────────
   const materialOptions = useMemo(
@@ -247,7 +251,8 @@ export default function DataBrowserScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function makeStyles(t: boolean) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0d0d1a',
@@ -257,25 +262,25 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#f59e0b',
     borderRadius: 12,
-    padding: 16,
-    margin: 16,
-    marginBottom: 12,
+    padding: t ? 16 : 10,
+    margin: t ? 16 : 12,
+    marginBottom: t ? 12 : 8,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     elevation: 5,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: t ? 24 : 16,
     fontWeight: '800',
     color: '#1a1a2e',
     letterSpacing: -0.5,
   },
   headerSubtitle: {
-    fontSize: 12,
+    fontSize: t ? 12 : 11,
     color: '#1a1a2e',
     opacity: 0.8,
-    marginTop: 4,
+    marginTop: 2,
     maxWidth: 220,
   },
   adminButton: {
@@ -305,8 +310,8 @@ const styles = StyleSheet.create({
   selectorRow: {
     flexDirection: 'row',
     gap: 12,
-    paddingHorizontal: 16,
-    marginBottom: 12,
+    paddingHorizontal: t ? 16 : 12,
+    marginBottom: t ? 12 : 8,
   },
   selectorItem: {
     flex: 1,
@@ -323,10 +328,10 @@ const styles = StyleSheet.create({
   statsBar: {
     flexDirection: 'row',
     backgroundColor: '#252542',
-    marginHorizontal: 16,
+    marginHorizontal: t ? 16 : 12,
     borderRadius: 10,
-    padding: 12,
-    marginBottom: 12,
+    padding: t ? 12 : 8,
+    marginBottom: t ? 12 : 8,
     alignItems: 'center',
     justifyContent: 'space-around',
   },
@@ -342,13 +347,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   statValue: {
-    fontSize: 18,
+    fontSize: t ? 18 : 14,
     fontWeight: '700',
     color: '#f59e0b',
   },
   statDivider: {
     width: 1,
-    height: 32,
+    height: t ? 32 : 24,
     backgroundColor: '#3d3d5c',
   },
   noDataText: {
@@ -505,4 +510,5 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
-});
+  })
+}
