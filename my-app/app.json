@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Lindner Bend Assistant",
-    "slug": "lindner-bend-assistant",
+    "slug": "my-app",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
