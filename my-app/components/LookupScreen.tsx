@@ -5,11 +5,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
   Modal,
   TextInput,
   useWindowDimensions,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useBendData } from '@/src/context/BendDataContext';
 import { findCorrection } from '@/src/utils/interpolation';
 import { CorrectionResult } from '@/src/types';
@@ -43,7 +43,7 @@ export default function LookupScreen() {
   const [bendLengthInput, setBendLengthInput] = useState('');
   const [result, setResult] = useState<CorrectionResult | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
-  const [showChart, setShowChart] = useState(true);
+  const [showChart, setShowChart] = useState(false);
   const [showAddNewModal, setShowAddNewModal] = useState(false);
 
   const getDefaultAddNewState = () => ({
