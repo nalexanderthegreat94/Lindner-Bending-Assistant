@@ -1,17 +1,19 @@
 {
   "expo": {
-    "name": "my-app",
-    "slug": "my-app",
+    "name": "Schroeder Bend Calculator",
+    "slug": "schroeder-bend-calculator",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "schroederbend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.schroeder.bendcalculator"
     },
     "android": {
+      "package": "com.schroeder.bendcalculator",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
