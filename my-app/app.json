@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "Schroeder Bend Calculator",
-    "slug": "schroeder-bend-calculator",
+    "name": "Lindner Bend Calculator",
+    "slug": "lindner-bend-calculator",
     "version": "1.0.0",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
-    "scheme": "schroederbend",
+    "scheme": "lindnerbend",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.schroeder.bendcalculator"
+      "bundleIdentifier": "com.lindner.bendcalculator"
     },
     "android": {
-      "package": "com.schroeder.bendcalculator",
+      "package": "com.lindner.bendcalculator",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
