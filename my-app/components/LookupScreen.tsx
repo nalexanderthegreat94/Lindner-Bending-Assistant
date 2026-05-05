@@ -603,7 +603,7 @@ function makeStyles(t: boolean) {
     backgroundColor: '#0d0d1a',
   },
   scrollContent: {
-    padding: 16,
+    padding: t ? 12 : 16,
   },
   landscapeContainer: {
     flex: 1,
@@ -631,20 +631,20 @@ function makeStyles(t: boolean) {
     elevation: 5,
   },
   headerTitle: {
-    fontSize: t ? 30 : 20,
+    fontSize: t ? 24 : 20,
     fontWeight: '800',
     color: '#1a1a2e',
     letterSpacing: -0.5,
     flex: 1,
   },
   headerIcon: {
-    width: t ? 68 : 46,
-    height: t ? 68 : 46,
+    width: t ? 56 : 46,
+    height: t ? 56 : 46,
     borderRadius: 10,
     overflow: 'hidden',
   },
   materialRow: {
-    marginBottom: 16,
+    marginBottom: t ? 10 : 16,
   },
   selectionLabel: {
     fontSize: 11,
@@ -656,7 +656,7 @@ function makeStyles(t: boolean) {
   dualInputRow: {
     flexDirection: 'row',
     gap: 10,
-    marginBottom: 16,
+    marginBottom: t ? 10 : 16,
   },
   inputDisplayHalf: {
     flex: 1,
@@ -681,8 +681,8 @@ function makeStyles(t: boolean) {
     borderWidth: 2,
     borderColor: '#3d3d5c',
     borderRadius: 12,
-    padding: t ? 20 : 12,
-    marginBottom: 16,
+    padding: t ? 14 : 12,
+    marginBottom: t ? 10 : 16,
   },
   inputLabel: {
     fontSize: 11,
@@ -692,16 +692,16 @@ function makeStyles(t: boolean) {
     marginBottom: 6,
   },
   inputValue: {
-    fontSize: t ? 42 : 28,
+    fontSize: t ? 36 : 28,
     fontWeight: '700',
     color: '#fff',
     textAlign: 'right',
-    minHeight: t ? 50 : 34,
+    minHeight: t ? 44 : 34,
     fontFamily: 'monospace',
   },
   numpadContainer: {
     gap: 6,
-    marginBottom: 12,
+    marginBottom: t ? 8 : 12,
   },
   numpadRow: {
     flexDirection: 'row',
@@ -709,14 +709,14 @@ function makeStyles(t: boolean) {
   },
   numpadButton: {
     flex: 1,
-    height: t ? 64 : 50,
+    height: t ? 54 : 50,
     backgroundColor: '#252542',
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
   numpadButtonLandscape: {
-    height: t ? 80 : 60,
+    height: t ? 68 : 60,
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
@@ -728,27 +728,27 @@ function makeStyles(t: boolean) {
     backgroundColor: '#6366f1',
   },
   numpadButtonText: {
-    fontSize: t ? 22 : 18,
+    fontSize: t ? 20 : 18,
     fontWeight: '600',
     color: '#fff',
   },
   numpadButtonCalculate: {
-    height: t ? 64 : 50,
+    height: t ? 54 : 50,
     backgroundColor: '#4ade80',
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
   numpadButtonCalculateText: {
-    fontSize: t ? 20 : 16,
+    fontSize: t ? 18 : 16,
     fontWeight: '700',
     color: '#fff',
     letterSpacing: 1,
   },
   resultContainer: {
     borderRadius: 12,
-    padding: 20,
-    marginBottom: 16,
+    padding: t ? 14 : 20,
+    marginBottom: t ? 10 : 16,
   },
   resultSuccess: {
     backgroundColor: '#1f2d1f',
@@ -837,7 +837,7 @@ function makeStyles(t: boolean) {
     letterSpacing: 1,
   },
   resultCorrection: {
-    fontSize: t ? 48 : 34,
+    fontSize: t ? 40 : 34,
     fontWeight: '800',
     color: '#4ade80',
     marginTop: 4,
@@ -846,7 +846,7 @@ function makeStyles(t: boolean) {
     alignItems: 'flex-end',
   },
   resultCrownValue: {
-    fontSize: t ? 32 : 22,
+    fontSize: t ? 28 : 22,
     fontWeight: '700',
     color: '#60a5fa',
     marginTop: 4,
