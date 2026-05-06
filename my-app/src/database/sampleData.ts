@@ -188,7 +188,7 @@ export const MATERIALS_DB: MaterialsDatabase = {
         { bendLength: 3000, correction: 9.9, crown: 0.5, enteredAt: 1778068800000 }
       ]
     }
-  }
+  },
   "0_8mm_aluminum": {
     name: "0.8mm / 20ga 3003 Aluminum",
     thickness: 0.8,
