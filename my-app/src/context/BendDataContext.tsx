@@ -120,12 +120,13 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
         next[materialKey].flanges[flange] = [];
       }
 
+      const stamped: BendDataPoint = { ...point, enteredAt: point.enteredAt ?? Date.now() };
       const pts = next[materialKey].flanges[flange];
-      const idx = pts.findIndex(p => p.bendLength === point.bendLength);
+      const idx = pts.findIndex(p => p.bendLength === stamped.bendLength);
       if (idx >= 0) {
-        pts[idx] = point;
+        pts[idx] = stamped;
       } else {
-        pts.push(point);
+        pts.push(stamped);
         pts.sort((a, b) => a.bendLength - b.bendLength);
       }
 
@@ -138,6 +139,7 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
     async (materialKey: string, flange: number, csvText: string, meta?: MaterialMeta): Promise<number> => {
       const lines = csvText.trim().split('\n');
       const points: BendDataPoint[] = [];
+      const importedAt = Date.now();
 
       for (const line of lines) {
         const parts = line.trim().split(',').map(p => p.trim());
@@ -152,6 +154,7 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
           bendLength: bl,
           correction: corr,
           crown: isNaN(crown) ? 0 : crown,
+          enteredAt: importedAt,
         });
       }
 

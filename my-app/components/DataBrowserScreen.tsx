@@ -11,8 +11,22 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { useBendData } from '@/src/context/BendDataContext';
 import DropdownPicker from '@/components/ui/DropdownPicker';
+
+function formatEnteredAt(ts?: number): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const year = String(d.getFullYear()).slice(-2);
+  const hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  const h = hours % 12 || 12;
+  return `${month}/${day}/${year}\n${h}:${minutes}${ampm}`;
+}
 
 const ADMIN_PASSWORD = 'admin';
 
@@ -85,6 +99,7 @@ export default function DataBrowserScreen() {
   };
 
   const handleDelete = (bendLength: number) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
       'Delete Data Point',
       `Remove ${bendLength}mm from the ${selectedFlange}mm flange?`,
@@ -108,11 +123,11 @@ export default function DataBrowserScreen() {
           <Text style={styles.headerTitle}>BROWSE DATA</Text>
         </View>
         {isAdmin ? (
-          <TouchableOpacity style={styles.adminBadge} onPress={() => setIsAdmin(false)}>
+          <TouchableOpacity style={styles.adminBadge} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsAdmin(false); }}>
             <Text style={styles.adminBadgeText}>✓ ADMIN</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.adminButton} onPress={openLogin}>
+          <TouchableOpacity style={styles.adminButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); openLogin(); }}>
             <Text style={styles.adminButtonText}>Admin</Text>
           </TouchableOpacity>
         )}
@@ -168,6 +183,7 @@ export default function DataBrowserScreen() {
         <Text style={[styles.tableHeaderCell, styles.colCorrection]}>Correction</Text>
         <Text style={[styles.tableHeaderCell, styles.colCrown]}>Crown</Text>
         <Text style={[styles.tableHeaderCell, styles.colNote]}>Note</Text>
+        <Text style={[styles.tableHeaderCell, styles.colDate]}>Date Added</Text>
         {isAdmin && <View style={styles.colDelete} />}
       </View>
 
@@ -202,6 +218,9 @@ export default function DataBrowserScreen() {
               </Text>
               <Text style={[styles.tableCell, styles.colNote, styles.cellNote]}>
                 {point.note || ''}
+              </Text>
+              <Text style={[styles.tableCell, styles.colDate, styles.cellDate]}>
+                {formatEnteredAt(point.enteredAt)}
               </Text>
               {isAdmin && (
                 <TouchableOpacity
@@ -238,7 +257,7 @@ export default function DataBrowserScreen() {
               autoFocus
             />
             {passwordError && <Text style={styles.loginError}>Incorrect password</Text>}
-            <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+            <TouchableOpacity style={styles.loginButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleLogin(); }}>
               <Text style={styles.loginButtonText}>Login</Text>
             </TouchableOpacity>
           </View>
@@ -402,6 +421,7 @@ function makeStyles(t: boolean) {
   colCorrection: { flex: 2 },
   colCrown:      { flex: 1.5 },
   colNote:       { flex: 2 },
+  colDate:       { flex: 2.5 },
   colDelete:     { width: 36 },
   cellBendLength: {
     fontWeight: '600',
@@ -423,6 +443,11 @@ function makeStyles(t: boolean) {
   cellNote: {
     color: '#f59e0b',
     fontSize: 12,
+  },
+  cellDate: {
+    color: '#555577',
+    fontSize: 11,
+    lineHeight: 16,
   },
   deleteButton: {
     width: 28,

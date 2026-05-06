@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import { useBendData } from '@/src/context/BendDataContext';
@@ -102,7 +103,7 @@ export default function SettingsScreen() {
 
   if (!unlocked) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["top","left","right"]}>
         <View style={styles.lockContainer}>
           <View style={styles.lockIconBox}>
             <Text style={styles.lockIcon}>⚙</Text>
@@ -121,7 +122,7 @@ export default function SettingsScreen() {
               autoCapitalize="none"
             />
             {passwordError && <Text style={styles.lockErrorText}>Incorrect password</Text>}
-            <TouchableOpacity style={styles.unlockButton} onPress={handleUnlock}>
+            <TouchableOpacity style={styles.unlockButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleUnlock(); }}>
               <Text style={styles.unlockButtonText}>Unlock</Text>
             </TouchableOpacity>
           </View>
@@ -270,7 +271,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
     : form.newMaterialName || 'new material';
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top","left","right"]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
@@ -278,7 +279,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
             <Text style={styles.headerTitle}>SETTINGS</Text>
             <Text style={styles.headerSubtitle}>Admin</Text>
           </View>
-          <TouchableOpacity style={styles.lockButton} onPress={onLock}>
+          <TouchableOpacity style={styles.lockButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onLock(); }}>
             <Text style={styles.lockButtonText}>Lock</Text>
           </TouchableOpacity>
         </View>
@@ -386,7 +387,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
             Google Sheets, then save as <Text style={styles.code}>.csv</Text>.
           </Text>
 
-          <TouchableOpacity style={styles.templateButton} onPress={handleDownloadTemplate}>
+          <TouchableOpacity style={styles.templateButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handleDownloadTemplate(); }}>
             <Text style={styles.templateButtonIcon}>⬇</Text>
             <Text style={styles.templateButtonText}>Download Template</Text>
           </TouchableOpacity>
@@ -409,7 +410,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
             Also accepts tab-separated files pasted directly from Excel.
           </Text>
 
-          <TouchableOpacity style={styles.filePickerZone} onPress={handlePickFile}>
+          <TouchableOpacity style={styles.filePickerZone} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handlePickFile(); }}>
             {pickedFile ? (
               <View style={styles.filePickedContent}>
                 <Text style={styles.filePickedIcon}>✓</Text>
@@ -469,7 +470,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
           {pickedFile && pickedFile.rows.length > 0 && (
             <TouchableOpacity
               style={[styles.importButton, importing && styles.importButtonDisabled]}
-              onPress={handleImport}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleImport(); }}
               disabled={importing}
             >
               <Text style={styles.importButtonText}>

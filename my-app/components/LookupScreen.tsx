@@ -11,6 +11,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { useBendData } from '@/src/context/BendDataContext';
 import { findCorrection } from '@/src/utils/interpolation';
 import { CorrectionResult } from '@/src/types';
@@ -102,9 +103,11 @@ export default function LookupScreen() {
 
   const handleNumpadPress = (value: string) => {
     if (value === 'GO') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       calculateResult();
       return;
     }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (activeInput === 'flangeHeight') {
       if (value === 'C') {
         setFlangeInput('');
@@ -232,7 +235,7 @@ export default function LookupScreen() {
       <View style={styles.dualInputRow}>
         <TouchableOpacity
           style={[styles.inputDisplay, styles.inputDisplayHalf, activeInput === 'bendLength' && styles.inputDisplayActive]}
-          onPress={() => setActiveInput('bendLength')}
+          onPress={() => { Haptics.selectionAsync(); setActiveInput('bendLength'); }}
           activeOpacity={1}
         >
           <Text style={styles.inputLabel}>Bend Length (mm)</Text>
@@ -240,7 +243,7 @@ export default function LookupScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.inputDisplay, styles.inputDisplayHalf, activeInput === 'flangeHeight' && styles.inputDisplayActive]}
-          onPress={() => setActiveInput('flangeHeight')}
+          onPress={() => { Haptics.selectionAsync(); setActiveInput('flangeHeight'); }}
           activeOpacity={1}
         >
           <Text style={styles.inputLabel}>Flange Height (mm)</Text>
@@ -374,7 +377,7 @@ export default function LookupScreen() {
     <>
       {/* Correction Curve */}
       <TouchableOpacity
-        onPress={() => setShowChart(!showChart)}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowChart(!showChart); }}
         style={styles.chartToggle}
       >
         <Text style={styles.chartToggleText}>
@@ -397,7 +400,7 @@ export default function LookupScreen() {
         <View style={styles.historyContainer}>
           <View style={styles.historyHeader}>
             <Text style={styles.historyTitle}>Correction History</Text>
-            <TouchableOpacity onPress={() => setHistory([])}>
+            <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setHistory([]); }}>
               <Text style={styles.historyClear}>Clear</Text>
             </TouchableOpacity>
           </View>
@@ -405,7 +408,7 @@ export default function LookupScreen() {
             {history.map(entry => (
               <TouchableOpacity
                 key={entry.id}
-                onPress={() => loadFromHistory(entry)}
+                onPress={() => { Haptics.selectionAsync(); loadFromHistory(entry); }}
                 style={styles.historyEntry}
               >
                 <View>
@@ -431,6 +434,7 @@ export default function LookupScreen() {
         <TouchableOpacity
           style={styles.manageButton}
           onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setAddNewFormState(getDefaultAddNewState());
             setShowAddNewModal(true);
           }}
@@ -475,7 +479,7 @@ export default function LookupScreen() {
           <View style={styles.addNewModal}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add Correction</Text>
-              <TouchableOpacity onPress={() => setShowAddNewModal(false)}>
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowAddNewModal(false); }}>
                 <Text style={styles.modalClose}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -585,7 +589,7 @@ export default function LookupScreen() {
                   onChangeText={(text) => setAddNewFormState({ ...addNewFormState, crown: text })}
                 />
               </View>
-              <TouchableOpacity style={styles.submitButton} onPress={handleAddNewCorrection}>
+              <TouchableOpacity style={styles.submitButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleAddNewCorrection(); }}>
                 <Text style={styles.submitButtonText}>Add Correction</Text>
               </TouchableOpacity>
             </ScrollView>
