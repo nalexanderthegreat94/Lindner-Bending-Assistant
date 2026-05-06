@@ -31,7 +31,7 @@ interface HistoryEntry {
 
 export default function LookupScreen() {
   const { db, addDataPoint } = useBendData();
-  const [material] = useState('2mm_aluminum');
+  const [material, setMaterial] = useState(() => Object.keys(db)[0] ?? '2mm_aluminum');
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const isLandscape = screenWidth > screenHeight;
   const isTablet = Math.min(screenWidth, screenHeight) >= 600;
@@ -227,9 +227,11 @@ export default function LookupScreen() {
       {/* Material */}
       <View style={styles.materialRow}>
         <Text style={styles.selectionLabel}>Material</Text>
-        <TouchableOpacity style={styles.dropdown}>
-          <Text style={styles.dropdownText}>{db[material]?.name}</Text>
-        </TouchableOpacity>
+        <DropdownPicker
+          options={Object.keys(db).map(key => ({ label: db[key].name, value: key }))}
+          selectedValue={material}
+          onSelect={(val) => { setMaterial(val); setResult(null); setBendLengthInput(''); }}
+        />
       </View>
 
       {/* Dual Input: Bend Length + Flange Height */}
