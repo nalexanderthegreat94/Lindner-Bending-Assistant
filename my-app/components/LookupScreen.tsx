@@ -211,18 +211,19 @@ export default function LookupScreen() {
 
   // ─── Render sections ──────────────────────────────────────────────────────
 
+  const headerSection = (
+    <View style={styles.header}>
+      <Text style={styles.headerTitle}>Schroeder Bend Assistant</Text>
+      <Image
+        source={require('../assets/images/android-ui-icon.png')}
+        style={styles.headerIcon}
+        resizeMode="contain"
+      />
+    </View>
+  );
+
   const controlsSection = (
     <>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Schroeder Bend Assistant</Text>
-        <Image
-          source={require('../assets/images/android-ui-icon.png')}
-          style={styles.headerIcon}
-          resizeMode="contain"
-        />
-      </View>
-
       {/* Material */}
       <View style={styles.materialRow}>
         <Text style={styles.selectionLabel}>Material</Text>
@@ -456,18 +457,20 @@ export default function LookupScreen() {
             style={styles.landscapeLeft}
             contentContainerStyle={styles.scrollContent}
           >
-            {controlsSection}
+            {headerSection}
+            {dataSection}
           </ScrollView>
           <View style={styles.landscapeDivider} />
           <ScrollView
             style={styles.landscapeRight}
             contentContainerStyle={styles.scrollContent}
           >
-            {dataSection}
+            {controlsSection}
           </ScrollView>
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          {headerSection}
           {controlsSection}
           {dataSection}
         </ScrollView>
