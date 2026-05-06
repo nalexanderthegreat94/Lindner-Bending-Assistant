@@ -445,7 +445,7 @@ export default function LookupScreen() {
   // ─── Layout ───────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {isLandscape ? (
         <View style={styles.landscapeContainer}>
           <ScrollView

@@ -101,7 +101,7 @@ export default function DataBrowserScreen() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
         <View>

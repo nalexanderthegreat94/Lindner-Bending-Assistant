@@ -11,7 +11,6 @@ export default function TabLayout() {
   const { width, height } = useWindowDimensions();
   const isTablet = Math.min(width, height) >= 600;
 
-  const tabBarBaseHeight = isTablet ? 84 : 70;
   const iconSize = isTablet ? 28 : 22;
 
   return (
@@ -26,8 +25,7 @@ export default function TabLayout() {
           backgroundColor: '#0d0d1a',
           borderTopColor: '#2d2d4d',
           borderTopWidth: 1,
-          height: tabBarBaseHeight + insets.bottom,
-          paddingBottom: 8 + insets.bottom,
+          paddingBottom: insets.bottom + 8,
           paddingTop: 4,
           paddingHorizontal: 6,
         },
