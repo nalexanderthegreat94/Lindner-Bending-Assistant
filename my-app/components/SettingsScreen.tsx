@@ -7,6 +7,7 @@ import {
   TextInput,
   TouchableOpacity,
   Platform,
+  Share,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -270,6 +271,25 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
     ? db[form.selectedMaterialKey]?.name ?? ''
     : form.newMaterialName || 'new material';
 
+  const handleExport = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const json = JSON.stringify(db, null, 2);
+    const filename = `bend_data_export_${new Date().toISOString().slice(0, 10)}.json`;
+    if (Platform.OS === 'web') {
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else {
+      await Share.share({ message: json, title: filename });
+    }
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top","left","right"]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -480,6 +500,20 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
               </Text>
             </TouchableOpacity>
           )}
+        </View>
+
+        {/* Export section */}
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Export All Data</Text>
+          <Text style={styles.sectionDescription}>
+            Downloads the complete bend correction database (all materials and
+            flanges) as a JSON file. Use this to back up your data or transfer
+            it to another device.
+          </Text>
+          <TouchableOpacity style={styles.templateButton} onPress={handleExport}>
+            <Text style={styles.templateButtonIcon}>⬆</Text>
+            <Text style={styles.templateButtonText}>Export All Data</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.spacer} />
