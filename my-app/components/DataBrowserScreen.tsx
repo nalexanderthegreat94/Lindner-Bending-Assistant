@@ -182,7 +182,6 @@ export default function DataBrowserScreen() {
         <Text style={[styles.tableHeaderCell, styles.colBendLength]}>Bend (mm)</Text>
         <Text style={[styles.tableHeaderCell, styles.colCorrection]}>Correction</Text>
         <Text style={[styles.tableHeaderCell, styles.colCrown]}>Crown</Text>
-        <Text style={[styles.tableHeaderCell, styles.colNote]}>Note</Text>
         <Text style={[styles.tableHeaderCell, styles.colDate]}>Date Added</Text>
         {isAdmin && <View style={styles.colDelete} />}
       </View>
@@ -215,9 +214,6 @@ export default function DataBrowserScreen() {
                 point.crown !== null ? styles.cellCrown : styles.cellNull,
               ]}>
                 {point.crown !== null ? point.crown : '—'}
-              </Text>
-              <Text style={[styles.tableCell, styles.colNote, styles.cellNote]}>
-                {point.note || ''}
               </Text>
               <Text style={[styles.tableCell, styles.colDate, styles.cellDate]}>
                 {formatEnteredAt(point.enteredAt)}
@@ -420,7 +416,6 @@ function makeStyles(t: boolean) {
   colBendLength: { flex: 2 },
   colCorrection: { flex: 2 },
   colCrown:      { flex: 1.5 },
-  colNote:       { flex: 2 },
   colDate:       { flex: 2.5 },
   colDelete:     { width: 36 },
   cellBendLength: {
@@ -439,10 +434,6 @@ function makeStyles(t: boolean) {
   cellNull: {
     color: '#ef4444',
     fontWeight: '700',
-  },
-  cellNote: {
-    color: '#f59e0b',
-    fontSize: 12,
   },
   cellDate: {
     color: '#555577',
