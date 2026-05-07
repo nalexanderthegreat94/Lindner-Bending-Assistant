@@ -28,7 +28,7 @@ function formatEnteredAt(ts?: number): string {
   return `${month}/${day}/${year}\n${h}:${minutes}${ampm}`;
 }
 
-const ADMIN_PASSWORD = 'admin';
+const ADMIN_PASSWORD = 'LUSA26';
 
 export default function DataBrowserScreen() {
   const { db, addDataPoint, deleteDataPoint } = useBendData();

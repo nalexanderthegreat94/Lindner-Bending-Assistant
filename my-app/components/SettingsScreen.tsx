@@ -15,7 +15,7 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useBendData } from '@/src/context/BendDataContext';
 import DropdownPicker from '@/components/ui/DropdownPicker';
 
-const ADMIN_PASSWORD = 'admin';
+const ADMIN_PASSWORD = 'LUSA26';
 
 // ─── Template generator ───────────────────────────────────────────────────────
 
