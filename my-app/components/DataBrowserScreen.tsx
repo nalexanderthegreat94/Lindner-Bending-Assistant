@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,13 +11,27 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { useBendData } from '@/src/context/BendDataContext';
 import DropdownPicker from '@/components/ui/DropdownPicker';
 
-const ADMIN_PASSWORD = 'admin';
+function formatEnteredAt(ts?: number): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const year = String(d.getFullYear()).slice(-2);
+  const hours = d.getHours();
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const ampm = hours >= 12 ? 'pm' : 'am';
+  const h = hours % 12 || 12;
+  return `${month}/${day}/${year}\n${h}:${minutes}${ampm}`;
+}
+
+const ADMIN_PASSWORD = 'LUSA26';
 
 export default function DataBrowserScreen() {
-  const { db, deleteDataPoint } = useBendData();
+  const { db, addDataPoint, deleteDataPoint } = useBendData();
   const { width, height } = useWindowDimensions();
   const isTablet = Math.min(width, height) >= 600;
   const styles = useMemo(() => makeStyles(isTablet), [isTablet]);
@@ -67,6 +81,49 @@ export default function DataBrowserScreen() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
+  const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isAdmin) {
+      adminTimerRef.current = setTimeout(() => setIsAdmin(false), 15 * 60 * 1000);
+    } else {
+      if (adminTimerRef.current) clearTimeout(adminTimerRef.current);
+    }
+    return () => { if (adminTimerRef.current) clearTimeout(adminTimerRef.current); };
+  }, [isAdmin]);
+
+  // ── Edit modal ────────────────────────────────────────────────────────────
+  const [editModal, setEditModal] = useState<{
+    bendLength: number;
+    correction: string;
+    crown: string;
+  } | null>(null);
+
+  const handleEditOpen = (bendLength: number, correction: number | null, crown: number | null) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setEditModal({
+      bendLength,
+      correction: correction !== null ? String(correction) : '',
+      crown: crown !== null ? String(crown) : '',
+    });
+  };
+
+  const handleEditSave = async () => {
+    if (!editModal) return;
+    const correction = parseFloat(editModal.correction);
+    const crown = parseFloat(editModal.crown);
+    if (isNaN(correction)) {
+      Alert.alert('Invalid', 'Please enter a valid correction value.');
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    await addDataPoint(selectedMaterialKey, selectedFlange, {
+      bendLength: editModal.bendLength,
+      correction,
+      crown: isNaN(crown) ? 0 : crown,
+    });
+    setEditModal(null);
+  };
 
   const openLogin = () => {
     setPasswordInput('');
@@ -85,6 +142,7 @@ export default function DataBrowserScreen() {
   };
 
   const handleDelete = (bendLength: number) => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
       'Delete Data Point',
       `Remove ${bendLength}mm from the ${selectedFlange}mm flange?`,
@@ -101,18 +159,18 @@ export default function DataBrowserScreen() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.headerTitle}>BROWSE DATA</Text>
         </View>
         {isAdmin ? (
-          <TouchableOpacity style={styles.adminBadge} onPress={() => setIsAdmin(false)}>
+          <TouchableOpacity style={styles.adminBadge} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setIsAdmin(false); }}>
             <Text style={styles.adminBadgeText}>✓ ADMIN</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.adminButton} onPress={openLogin}>
+          <TouchableOpacity style={styles.adminButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); openLogin(); }}>
             <Text style={styles.adminButtonText}>Admin</Text>
           </TouchableOpacity>
         )}
@@ -167,7 +225,8 @@ export default function DataBrowserScreen() {
         <Text style={[styles.tableHeaderCell, styles.colBendLength]}>Bend (mm)</Text>
         <Text style={[styles.tableHeaderCell, styles.colCorrection]}>Correction</Text>
         <Text style={[styles.tableHeaderCell, styles.colCrown]}>Crown</Text>
-        <Text style={[styles.tableHeaderCell, styles.colNote]}>Note</Text>
+        <Text style={[styles.tableHeaderCell, styles.colDate]}>Date Added</Text>
+        {isAdmin && <View style={styles.colEdit} />}
         {isAdmin && <View style={styles.colDelete} />}
       </View>
 
@@ -200,9 +259,17 @@ export default function DataBrowserScreen() {
               ]}>
                 {point.crown !== null ? point.crown : '—'}
               </Text>
-              <Text style={[styles.tableCell, styles.colNote, styles.cellNote]}>
-                {point.note || ''}
+              <Text style={[styles.tableCell, styles.colDate, styles.cellDate]}>
+                {formatEnteredAt(point.enteredAt)}
               </Text>
+              {isAdmin && (
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => handleEditOpen(point.bendLength, point.correction, point.crown)}
+                >
+                  <Text style={styles.editButtonText}>✎</Text>
+                </TouchableOpacity>
+              )}
               {isAdmin && (
                 <TouchableOpacity
                   style={styles.deleteButton}
@@ -238,10 +305,50 @@ export default function DataBrowserScreen() {
               autoFocus
             />
             {passwordError && <Text style={styles.loginError}>Incorrect password</Text>}
-            <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
+            <TouchableOpacity style={styles.loginButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleLogin(); }}>
               <Text style={styles.loginButtonText}>Login</Text>
             </TouchableOpacity>
           </View>
+        </TouchableOpacity>
+      </Modal>
+      {/* Edit modal */}
+      <Modal visible={!!editModal} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setEditModal(null)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={styles.loginBox}>
+              <Text style={styles.loginTitle}>Edit Data Point</Text>
+              {editModal && (
+                <Text style={[styles.loginTitle, { fontSize: 14, marginTop: -12, marginBottom: 16, color: '#888' }]}>
+                  {editModal.bendLength}mm
+                </Text>
+              )}
+              <Text style={styles.editFieldLabel}>Correction (°)</Text>
+              <TextInput
+                style={styles.loginInput}
+                placeholder="e.g. 7.5"
+                placeholderTextColor="#555"
+                keyboardType="decimal-pad"
+                value={editModal?.correction ?? ''}
+                onChangeText={(t) => setEditModal(prev => prev ? { ...prev, correction: t } : null)}
+              />
+              <Text style={[styles.editFieldLabel, { marginTop: 12 }]}>Crown</Text>
+              <TextInput
+                style={styles.loginInput}
+                placeholder="e.g. 0.15"
+                placeholderTextColor="#555"
+                keyboardType="decimal-pad"
+                value={editModal?.crown ?? ''}
+                onChangeText={(t) => setEditModal(prev => prev ? { ...prev, crown: t } : null)}
+              />
+              <TouchableOpacity style={styles.loginButton} onPress={handleEditSave}>
+                <Text style={styles.loginButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
     </SafeAreaView>
@@ -401,7 +508,8 @@ function makeStyles(t: boolean) {
   colBendLength: { flex: 2 },
   colCorrection: { flex: 2 },
   colCrown:      { flex: 1.5 },
-  colNote:       { flex: 2 },
+  colDate:       { flex: 2.5 },
+  colEdit:       { width: 36 },
   colDelete:     { width: 36 },
   cellBendLength: {
     fontWeight: '600',
@@ -420,9 +528,32 @@ function makeStyles(t: boolean) {
     color: '#ef4444',
     fontWeight: '700',
   },
-  cellNote: {
-    color: '#f59e0b',
-    fontSize: 12,
+  cellDate: {
+    color: '#555577',
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  editButton: {
+    width: 28,
+    height: 28,
+    backgroundColor: '#1a2e3d',
+    borderRadius: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 4,
+  },
+  editButtonText: {
+    color: '#60a5fa',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  editFieldLabel: {
+    color: '#888',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 6,
+    alignSelf: 'flex-start',
   },
   deleteButton: {
     width: 28,

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,15 @@ import {
   TextInput,
   TouchableOpacity,
   Platform,
+  Share,
 } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import { useBendData } from '@/src/context/BendDataContext';
 import DropdownPicker from '@/components/ui/DropdownPicker';
 
-const ADMIN_PASSWORD = 'admin';
+const ADMIN_PASSWORD = 'LUSA26';
 
 // ─── Template generator ───────────────────────────────────────────────────────
 
@@ -88,6 +90,19 @@ export default function SettingsScreen() {
   const [unlocked, setUnlocked] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
+  const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (unlocked) {
+      adminTimerRef.current = setTimeout(() => {
+        setUnlocked(false);
+        setPasswordInput('');
+      }, 15 * 60 * 1000);
+    } else {
+      if (adminTimerRef.current) clearTimeout(adminTimerRef.current);
+    }
+    return () => { if (adminTimerRef.current) clearTimeout(adminTimerRef.current); };
+  }, [unlocked]);
 
   const handleUnlock = () => {
     if (passwordInput === ADMIN_PASSWORD) {
@@ -102,7 +117,7 @@ export default function SettingsScreen() {
 
   if (!unlocked) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["top","left","right"]}>
         <View style={styles.lockContainer}>
           <View style={styles.lockIconBox}>
             <Text style={styles.lockIcon}>⚙</Text>
@@ -121,7 +136,7 @@ export default function SettingsScreen() {
               autoCapitalize="none"
             />
             {passwordError && <Text style={styles.lockErrorText}>Incorrect password</Text>}
-            <TouchableOpacity style={styles.unlockButton} onPress={handleUnlock}>
+            <TouchableOpacity style={styles.unlockButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleUnlock(); }}>
               <Text style={styles.unlockButtonText}>Unlock</Text>
             </TouchableOpacity>
           </View>
@@ -269,8 +284,27 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
     ? db[form.selectedMaterialKey]?.name ?? ''
     : form.newMaterialName || 'new material';
 
+  const handleExport = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const json = JSON.stringify(db, null, 2);
+    const filename = `bend_data_export_${new Date().toISOString().slice(0, 10)}.json`;
+    if (Platform.OS === 'web') {
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else {
+      await Share.share({ message: json, title: filename });
+    }
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["top","left","right"]}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
@@ -278,7 +312,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
             <Text style={styles.headerTitle}>SETTINGS</Text>
             <Text style={styles.headerSubtitle}>Admin</Text>
           </View>
-          <TouchableOpacity style={styles.lockButton} onPress={onLock}>
+          <TouchableOpacity style={styles.lockButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onLock(); }}>
             <Text style={styles.lockButtonText}>Lock</Text>
           </TouchableOpacity>
         </View>
@@ -386,7 +420,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
             Google Sheets, then save as <Text style={styles.code}>.csv</Text>.
           </Text>
 
-          <TouchableOpacity style={styles.templateButton} onPress={handleDownloadTemplate}>
+          <TouchableOpacity style={styles.templateButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handleDownloadTemplate(); }}>
             <Text style={styles.templateButtonIcon}>⬇</Text>
             <Text style={styles.templateButtonText}>Download Template</Text>
           </TouchableOpacity>
@@ -409,7 +443,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
             Also accepts tab-separated files pasted directly from Excel.
           </Text>
 
-          <TouchableOpacity style={styles.filePickerZone} onPress={handlePickFile}>
+          <TouchableOpacity style={styles.filePickerZone} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handlePickFile(); }}>
             {pickedFile ? (
               <View style={styles.filePickedContent}>
                 <Text style={styles.filePickedIcon}>✓</Text>
@@ -469,7 +503,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
           {pickedFile && pickedFile.rows.length > 0 && (
             <TouchableOpacity
               style={[styles.importButton, importing && styles.importButtonDisabled]}
-              onPress={handleImport}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleImport(); }}
               disabled={importing}
             >
               <Text style={styles.importButtonText}>
@@ -479,6 +513,20 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
               </Text>
             </TouchableOpacity>
           )}
+        </View>
+
+        {/* Export section */}
+        <View style={styles.sectionCard}>
+          <Text style={styles.sectionTitle}>Export All Data</Text>
+          <Text style={styles.sectionDescription}>
+            Downloads the complete bend correction database (all materials and
+            flanges) as a JSON file. Use this to back up your data or transfer
+            it to another device.
+          </Text>
+          <TouchableOpacity style={styles.templateButton} onPress={handleExport}>
+            <Text style={styles.templateButtonIcon}>⬆</Text>
+            <Text style={styles.templateButtonText}>Export All Data</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.spacer} />

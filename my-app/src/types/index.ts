@@ -6,6 +6,7 @@ export interface BendDataPoint {
   correction: number | null; // degrees or null if not possible
   crown: number | null; // mm or null if not possible
   note?: string; // e.g., "not possible"
+  enteredAt?: number; // Unix timestamp (ms) when this point was added
 }
 
 /**

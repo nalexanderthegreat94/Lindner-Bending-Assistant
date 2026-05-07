@@ -11,6 +11,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Haptics from 'expo-haptics';
 import { useBendData } from '@/src/context/BendDataContext';
 import { findCorrection } from '@/src/utils/interpolation';
 import { CorrectionResult } from '@/src/types';
@@ -30,7 +31,7 @@ interface HistoryEntry {
 
 export default function LookupScreen() {
   const { db, addDataPoint } = useBendData();
-  const [material] = useState('2mm_aluminum');
+  const [material, setMaterial] = useState(() => Object.keys(db)[0] ?? '2mm_aluminum');
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const isLandscape = screenWidth > screenHeight;
   const isTablet = Math.min(screenWidth, screenHeight) >= 600;
@@ -102,9 +103,11 @@ export default function LookupScreen() {
 
   const handleNumpadPress = (value: string) => {
     if (value === 'GO') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       calculateResult();
       return;
     }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (activeInput === 'flangeHeight') {
       if (value === 'C') {
         setFlangeInput('');
@@ -208,31 +211,34 @@ export default function LookupScreen() {
 
   // ─── Render sections ──────────────────────────────────────────────────────
 
+  const headerSection = (
+    <View style={styles.header}>
+      <Text style={styles.headerTitle}>Schroeder Bend Assistant</Text>
+      <Image
+        source={require('../assets/images/android-ui-icon.png')}
+        style={styles.headerIcon}
+        resizeMode="contain"
+      />
+    </View>
+  );
+
   const controlsSection = (
     <>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Schroeder Bend Assistant</Text>
-        <Image
-          source={require('../assets/images/android-ui-icon.png')}
-          style={styles.headerIcon}
-          resizeMode="contain"
-        />
-      </View>
-
       {/* Material */}
       <View style={styles.materialRow}>
         <Text style={styles.selectionLabel}>Material</Text>
-        <TouchableOpacity style={styles.dropdown}>
-          <Text style={styles.dropdownText}>{db[material]?.name}</Text>
-        </TouchableOpacity>
+        <DropdownPicker
+          options={Object.keys(db).map(key => ({ label: db[key].name, value: key }))}
+          selectedValue={material}
+          onSelect={(val) => { setMaterial(val); setResult(null); setBendLengthInput(''); }}
+        />
       </View>
 
       {/* Dual Input: Bend Length + Flange Height */}
       <View style={styles.dualInputRow}>
         <TouchableOpacity
           style={[styles.inputDisplay, styles.inputDisplayHalf, activeInput === 'bendLength' && styles.inputDisplayActive]}
-          onPress={() => setActiveInput('bendLength')}
+          onPress={() => { Haptics.selectionAsync(); setActiveInput('bendLength'); }}
           activeOpacity={1}
         >
           <Text style={styles.inputLabel}>Bend Length (mm)</Text>
@@ -240,7 +246,7 @@ export default function LookupScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.inputDisplay, styles.inputDisplayHalf, activeInput === 'flangeHeight' && styles.inputDisplayActive]}
-          onPress={() => setActiveInput('flangeHeight')}
+          onPress={() => { Haptics.selectionAsync(); setActiveInput('flangeHeight'); }}
           activeOpacity={1}
         >
           <Text style={styles.inputLabel}>Flange Height (mm)</Text>
@@ -374,7 +380,7 @@ export default function LookupScreen() {
     <>
       {/* Correction Curve */}
       <TouchableOpacity
-        onPress={() => setShowChart(!showChart)}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowChart(!showChart); }}
         style={styles.chartToggle}
       >
         <Text style={styles.chartToggleText}>
@@ -397,7 +403,7 @@ export default function LookupScreen() {
         <View style={styles.historyContainer}>
           <View style={styles.historyHeader}>
             <Text style={styles.historyTitle}>Correction History</Text>
-            <TouchableOpacity onPress={() => setHistory([])}>
+            <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setHistory([]); }}>
               <Text style={styles.historyClear}>Clear</Text>
             </TouchableOpacity>
           </View>
@@ -405,7 +411,7 @@ export default function LookupScreen() {
             {history.map(entry => (
               <TouchableOpacity
                 key={entry.id}
-                onPress={() => loadFromHistory(entry)}
+                onPress={() => { Haptics.selectionAsync(); loadFromHistory(entry); }}
                 style={styles.historyEntry}
               >
                 <View>
@@ -431,6 +437,7 @@ export default function LookupScreen() {
         <TouchableOpacity
           style={styles.manageButton}
           onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             setAddNewFormState(getDefaultAddNewState());
             setShowAddNewModal(true);
           }}
@@ -445,25 +452,27 @@ export default function LookupScreen() {
   // ─── Layout ───────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {isLandscape ? (
         <View style={styles.landscapeContainer}>
           <ScrollView
             style={styles.landscapeLeft}
             contentContainerStyle={styles.scrollContent}
           >
-            {controlsSection}
+            {headerSection}
+            {dataSection}
           </ScrollView>
           <View style={styles.landscapeDivider} />
           <ScrollView
             style={styles.landscapeRight}
             contentContainerStyle={styles.scrollContent}
           >
-            {dataSection}
+            {controlsSection}
           </ScrollView>
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.scrollContent}>
+          {headerSection}
           {controlsSection}
           {dataSection}
         </ScrollView>
@@ -475,7 +484,7 @@ export default function LookupScreen() {
           <View style={styles.addNewModal}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add Correction</Text>
-              <TouchableOpacity onPress={() => setShowAddNewModal(false)}>
+              <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowAddNewModal(false); }}>
                 <Text style={styles.modalClose}>✕</Text>
               </TouchableOpacity>
             </View>
@@ -585,7 +594,7 @@ export default function LookupScreen() {
                   onChangeText={(text) => setAddNewFormState({ ...addNewFormState, crown: text })}
                 />
               </View>
-              <TouchableOpacity style={styles.submitButton} onPress={handleAddNewCorrection}>
+              <TouchableOpacity style={styles.submitButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleAddNewCorrection(); }}>
                 <Text style={styles.submitButtonText}>Add Correction</Text>
               </TouchableOpacity>
             </ScrollView>
