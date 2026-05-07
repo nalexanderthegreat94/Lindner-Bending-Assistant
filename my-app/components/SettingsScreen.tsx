@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -90,6 +90,19 @@ export default function SettingsScreen() {
   const [unlocked, setUnlocked] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
+  const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (unlocked) {
+      adminTimerRef.current = setTimeout(() => {
+        setUnlocked(false);
+        setPasswordInput('');
+      }, 15 * 60 * 1000);
+    } else {
+      if (adminTimerRef.current) clearTimeout(adminTimerRef.current);
+    }
+    return () => { if (adminTimerRef.current) clearTimeout(adminTimerRef.current); };
+  }, [unlocked]);
 
   const handleUnlock = () => {
     if (passwordInput === ADMIN_PASSWORD) {

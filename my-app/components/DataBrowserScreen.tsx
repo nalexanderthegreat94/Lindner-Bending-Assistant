@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -81,6 +81,16 @@ export default function DataBrowserScreen() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
+  const adminTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (isAdmin) {
+      adminTimerRef.current = setTimeout(() => setIsAdmin(false), 15 * 60 * 1000);
+    } else {
+      if (adminTimerRef.current) clearTimeout(adminTimerRef.current);
+    }
+    return () => { if (adminTimerRef.current) clearTimeout(adminTimerRef.current); };
+  }, [isAdmin]);
 
   // ── Edit modal ────────────────────────────────────────────────────────────
   const [editModal, setEditModal] = useState<{
