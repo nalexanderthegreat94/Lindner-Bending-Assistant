@@ -635,8 +635,8 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
               <Text style={styles.modalRuleText}>Data points <Text style={styles.modalBold}>not in the file</Text> are left untouched.</Text>
             </View>
             <View style={styles.modalRule}>
-              <Text style={styles.modalRuleIcon}>✕</Text>
-              <Text style={styles.modalRuleText}>Points you have <Text style={styles.modalBold}>manually deleted</Text> stay deleted, even if the import file contains them.</Text>
+              <Text style={styles.modalRuleIcon}>↺</Text>
+              <Text style={styles.modalRuleText}>Points you previously <Text style={styles.modalBold}>deleted</Text> will be <Text style={styles.modalBold}>restored</Text> if they exist in the import file.</Text>
             </View>
             <TouchableOpacity style={styles.modalCloseButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowInfoModal(false); }}>
               <Text style={styles.modalCloseButtonText}>Got it</Text>
@@ -662,7 +662,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
               </Text>
             )}
             <Text style={styles.modalNoteText}>
-              Existing points with the same bend length will be overwritten. Points not in the file will be kept. Manually deleted points will remain deleted.
+              Existing points with the same bend length will be overwritten. Points not in the file will be kept. Previously deleted points will be restored if they appear in the file.
             </Text>
             <View style={styles.modalButtons}>
               <TouchableOpacity style={styles.modalCancelButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setConfirmPending(null); }}>

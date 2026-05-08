@@ -97,10 +97,15 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
     }).catch(console.error);
   }, []);
 
-  const persist = useCallback(async (next: MaterialsDatabase) => {
+  const persist = useCallback(async (next: MaterialsDatabase, nextDeleted?: Set<string>) => {
+    const deleted = nextDeleted ?? deletedPoints;
     await AsyncStorage.setItem(USER_DATA_KEY, JSON.stringify(next));
+    if (nextDeleted) {
+      await AsyncStorage.setItem(DELETED_POINTS_KEY, JSON.stringify([...nextDeleted]));
+      setDeletedPoints(nextDeleted);
+    }
     setUserAdditions(next);
-    setDb(buildDB(MATERIALS_DB, next, deletedPoints));
+    setDb(buildDB(MATERIALS_DB, next, deleted));
   }, [deletedPoints]);
 
   const addDataPoint = useCallback(
@@ -190,10 +195,14 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
       }
       pts.sort((a, b) => a.bendLength - b.bendLength);
 
-      await persist(next);
+      const nextDeleted = new Set(deletedPoints);
+      for (const pt of points) {
+        nextDeleted.delete(`${materialKey}::${flange}::${pt.bendLength}`);
+      }
+      await persist(next, nextDeleted);
       return points.length;
     },
-    [userAdditions, persist]
+    [userAdditions, deletedPoints, persist]
   );
 
   const importFullDB = useCallback(
@@ -236,10 +245,21 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
         }
       }
 
-      await persist(next);
+      const nextDeleted = new Set(deletedPoints);
+      for (const matKey of Object.keys(incoming)) {
+        const incomingMat = incoming[matKey];
+        if (!incomingMat?.flanges) continue;
+        for (const flangeStr of Object.keys(incomingMat.flanges)) {
+          const flange = Number(flangeStr);
+          for (const pt of incomingMat.flanges[flange] ?? []) {
+            nextDeleted.delete(`${matKey}::${flange}::${pt.bendLength}`);
+          }
+        }
+      }
+      await persist(next, nextDeleted);
       return count;
     },
-    [userAdditions, persist]
+    [userAdditions, deletedPoints, persist]
   );
 
   const deleteDataPoint = useCallback(
