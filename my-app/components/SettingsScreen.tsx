@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Platform,
   Share,
+  Modal,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -171,6 +172,8 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
   const [pickedJsonDB, setPickedJsonDB] = useState<{ name: string; materialCount: number; flangeCount: number; pointCount: number; db: any } | null>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [importing, setImporting] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [confirmPending, setConfirmPending] = useState<'csv' | 'json' | null>(null);
 
   const materialOptions = useMemo(() => [
     ...Object.keys(db).map(key => ({ label: db[key].name, value: key })),
@@ -285,7 +288,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
     }
   };
 
-  const handleImportJSON = async () => {
+  const executeImportJSON = async () => {
     if (!pickedJsonDB) return;
     setImporting(true);
     setStatus(null);
@@ -300,7 +303,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
     }
   };
 
-  const handleImport = async () => {
+  const executeImportCSV = async () => {
     if (!pickedFile || pickedFile.rows.length === 0) return;
     const target = resolveTarget();
     if (!target) return;
@@ -308,7 +311,6 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
     setImporting(true);
     setStatus(null);
     try {
-      // Convert parsed rows back to CSV for the existing importCSV function
       const csv = pickedFile.rows
         .map(r => `${r.bendLength},${r.correction},${r.crown}`)
         .join('\n');
@@ -323,6 +325,12 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
     } finally {
       setImporting(false);
     }
+  };
+
+  const handleConfirmImport = () => {
+    setConfirmPending(null);
+    if (confirmPending === 'json') executeImportJSON();
+    else if (confirmPending === 'csv') executeImportCSV();
   };
 
   const currentMaterialName = form.selectedMaterialKey !== '__new__'
@@ -364,7 +372,12 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
 
         {/* Import section */}
         <View style={styles.sectionCard}>
-          <Text style={styles.sectionTitle}>Import Correction Data</Text>
+          <View style={styles.sectionTitleRow}>
+            <Text style={styles.sectionTitle}>Import Correction Data</Text>
+            <TouchableOpacity style={styles.infoButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowInfoModal(true); }}>
+              <Text style={styles.infoButtonText}>?</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.sectionDescription}>
             Select the material and flange height this data belongs to, download the
             CSV template to fill in Excel, then import the completed file.
@@ -559,7 +572,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
           {pickedFile && pickedFile.rows.length > 0 && (
             <TouchableOpacity
               style={[styles.importButton, importing && styles.importButtonDisabled]}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleImport(); }}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setConfirmPending('csv'); }}
               disabled={importing}
             >
               <Text style={styles.importButtonText}>
@@ -574,7 +587,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
           {pickedJsonDB && (
             <TouchableOpacity
               style={[styles.importButton, importing && styles.importButtonDisabled]}
-              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleImportJSON(); }}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setConfirmPending('json'); }}
               disabled={importing}
             >
               <Text style={styles.importButtonText}>
@@ -602,6 +615,66 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
 
         <View style={styles.spacer} />
       </ScrollView>
+
+      {/* Info modal */}
+      <Modal visible={showInfoModal} transparent animationType="fade" onRequestClose={() => setShowInfoModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>How Import Works</Text>
+            <View style={styles.modalDivider} />
+            <View style={styles.modalRule}>
+              <Text style={styles.modalRuleIcon}>↩</Text>
+              <Text style={styles.modalRuleText}>If a bend length in the file already exists, the imported value <Text style={styles.modalBold}>overwrites</Text> it.</Text>
+            </View>
+            <View style={styles.modalRule}>
+              <Text style={styles.modalRuleIcon}>+</Text>
+              <Text style={styles.modalRuleText}>If a bend length does not exist, it is <Text style={styles.modalBold}>added</Text>.</Text>
+            </View>
+            <View style={styles.modalRule}>
+              <Text style={styles.modalRuleIcon}>✓</Text>
+              <Text style={styles.modalRuleText}>Data points <Text style={styles.modalBold}>not in the file</Text> are left untouched.</Text>
+            </View>
+            <View style={styles.modalRule}>
+              <Text style={styles.modalRuleIcon}>✕</Text>
+              <Text style={styles.modalRuleText}>Points you have <Text style={styles.modalBold}>manually deleted</Text> stay deleted, even if the import file contains them.</Text>
+            </View>
+            <TouchableOpacity style={styles.modalCloseButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowInfoModal(false); }}>
+              <Text style={styles.modalCloseButtonText}>Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Confirm import modal */}
+      <Modal visible={confirmPending !== null} transparent animationType="fade" onRequestClose={() => setConfirmPending(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Confirm Import</Text>
+            <View style={styles.modalDivider} />
+            {confirmPending === 'csv' && pickedFile && (
+              <Text style={styles.modalBodyText}>
+                You are about to import <Text style={styles.modalBold}>{pickedFile.rows.length} data point{pickedFile.rows.length !== 1 ? 's' : ''}</Text> into <Text style={styles.modalBold}>{currentMaterialName}</Text>.
+              </Text>
+            )}
+            {confirmPending === 'json' && pickedJsonDB && (
+              <Text style={styles.modalBodyText}>
+                You are about to restore <Text style={styles.modalBold}>{pickedJsonDB.pointCount} data points</Text> across <Text style={styles.modalBold}>{pickedJsonDB.materialCount} material{pickedJsonDB.materialCount !== 1 ? 's' : ''}</Text>.
+              </Text>
+            )}
+            <Text style={styles.modalNoteText}>
+              Existing points with the same bend length will be overwritten. Points not in the file will be kept. Manually deleted points will remain deleted.
+            </Text>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity style={styles.modalCancelButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setConfirmPending(null); }}>
+                <Text style={styles.modalCancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.modalConfirmButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleConfirmImport(); }}>
+                <Text style={styles.modalConfirmButtonText}>Import</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -650,8 +723,33 @@ const styles = StyleSheet.create({
     backgroundColor: '#111125', borderWidth: 1, borderColor: '#3d3d5c',
     borderRadius: 12, padding: 20, marginBottom: 16,
   },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 6 },
+  sectionTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#fff' },
+  infoButton: {
+    width: 24, height: 24, borderRadius: 12, borderWidth: 1, borderColor: '#3d3d5c',
+    justifyContent: 'center', alignItems: 'center', backgroundColor: '#1a1a2e',
+  },
+  infoButtonText: { fontSize: 13, fontWeight: '700', color: '#888' },
   sectionDescription: { fontSize: 13, color: '#666', marginBottom: 20, lineHeight: 19 },
+
+  // Modals
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalBox: { backgroundColor: '#1a1a2e', borderRadius: 14, padding: 24, width: '100%', maxWidth: 400, borderWidth: 1, borderColor: '#3d3d5c' },
+  modalTitle: { fontSize: 17, fontWeight: '800', color: '#fff', marginBottom: 12 },
+  modalDivider: { height: 1, backgroundColor: '#2d2d4d', marginBottom: 16 },
+  modalRule: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
+  modalRuleIcon: { fontSize: 14, color: '#f59e0b', fontWeight: '700', width: 16, textAlign: 'center', marginTop: 1 },
+  modalRuleText: { flex: 1, fontSize: 13, color: '#aaa', lineHeight: 19 },
+  modalBold: { color: '#fff', fontWeight: '700' },
+  modalBodyText: { fontSize: 14, color: '#ccc', lineHeight: 21, marginBottom: 12 },
+  modalNoteText: { fontSize: 12, color: '#666', lineHeight: 18, marginBottom: 20, borderLeftWidth: 2, borderLeftColor: '#3d3d5c', paddingLeft: 10 },
+  modalCloseButton: { backgroundColor: '#f59e0b', borderRadius: 10, paddingVertical: 12, alignItems: 'center', marginTop: 4 },
+  modalCloseButtonText: { color: '#1a1a2e', fontSize: 15, fontWeight: '700' },
+  modalButtons: { flexDirection: 'row', gap: 10 },
+  modalCancelButton: { flex: 1, borderWidth: 1, borderColor: '#3d3d5c', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  modalCancelButtonText: { color: '#888', fontSize: 15, fontWeight: '600' },
+  modalConfirmButton: { flex: 1, backgroundColor: '#f59e0b', borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  modalConfirmButtonText: { color: '#1a1a2e', fontSize: 15, fontWeight: '700' },
 
   stepRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 10 },
   stepBadge: {
