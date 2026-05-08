@@ -73,6 +73,7 @@ interface BendDataContextValue {
   db: MaterialsDatabase;
   addDataPoint: (materialKey: string, flange: number, point: BendDataPoint, meta?: MaterialMeta) => Promise<void>;
   importCSV: (materialKey: string, flange: number, csvText: string, meta?: MaterialMeta) => Promise<number>;
+  importFullDB: (incoming: MaterialsDatabase) => Promise<number>;
   deleteDataPoint: (materialKey: string, flange: number, bendLength: number) => Promise<void>;
 }
 
@@ -195,6 +196,52 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
     [userAdditions, persist]
   );
 
+  const importFullDB = useCallback(
+    async (incoming: MaterialsDatabase): Promise<number> => {
+      const next: MaterialsDatabase = JSON.parse(JSON.stringify(userAdditions));
+      let count = 0;
+
+      for (const matKey of Object.keys(incoming)) {
+        const incomingMat = incoming[matKey];
+        if (!incomingMat?.flanges) continue;
+
+        if (!next[matKey]) {
+          next[matKey] = JSON.parse(JSON.stringify(incomingMat));
+          for (const flangeStr of Object.keys(next[matKey].flanges)) {
+            count += next[matKey].flanges[Number(flangeStr)]?.length ?? 0;
+          }
+          continue;
+        }
+
+        for (const flangeStr of Object.keys(incomingMat.flanges)) {
+          const flange = Number(flangeStr);
+          const addPoints = incomingMat.flanges[flange] ?? [];
+
+          if (!next[matKey].flanges[flange]) {
+            next[matKey].flanges[flange] = [...addPoints];
+            count += addPoints.length;
+          } else {
+            const existing = next[matKey].flanges[flange];
+            for (const pt of addPoints) {
+              const idx = existing.findIndex(p => p.bendLength === pt.bendLength);
+              if (idx >= 0) {
+                existing[idx] = pt;
+              } else {
+                existing.push(pt);
+                count++;
+              }
+            }
+            existing.sort((a, b) => a.bendLength - b.bendLength);
+          }
+        }
+      }
+
+      await persist(next);
+      return count;
+    },
+    [userAdditions, persist]
+  );
+
   const deleteDataPoint = useCallback(
     async (materialKey: string, flange: number, bendLength: number) => {
       const key = `${materialKey}::${flange}::${bendLength}`;
@@ -207,7 +254,7 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <BendDataContext.Provider value={{ db, addDataPoint, importCSV, deleteDataPoint }}>
+    <BendDataContext.Provider value={{ db, addDataPoint, importCSV, importFullDB, deleteDataPoint }}>
       {children}
     </BendDataContext.Provider>
   );

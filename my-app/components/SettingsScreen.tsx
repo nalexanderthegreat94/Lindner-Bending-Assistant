@@ -151,7 +151,7 @@ export default function SettingsScreen() {
 // ─── Unlocked settings content ────────────────────────────────────────────────
 
 function SettingsContent({ onLock }: { onLock: () => void }) {
-  const { db, importCSV } = useBendData();
+  const { db, importCSV, importFullDB } = useBendData();
 
   const getDefaultForm = () => ({
     selectedMaterialKey: Object.keys(db)[0] ?? '__new__',
@@ -168,6 +168,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
 
   const [form, setForm] = useState(getDefaultForm);
   const [pickedFile, setPickedFile] = useState<{ name: string; rows: ParsedRow[]; errors: string[] } | null>(null);
+  const [pickedJsonDB, setPickedJsonDB] = useState<{ name: string; materialCount: number; flangeCount: number; pointCount: number; db: any } | null>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [importing, setImporting] = useState(false);
 
@@ -193,6 +194,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
     setForm({ ...form, selectedMaterialKey: val, selectedFlange: defaultFlange });
     setStatus(null);
     setPickedFile(null);
+    setPickedJsonDB(null);
   };
 
   // Resolve the material key and flange number from form state, returns null + sets error if invalid
@@ -232,9 +234,10 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
   const handlePickFile = async () => {
     setStatus(null);
     setPickedFile(null);
+    setPickedJsonDB(null);
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/csv', 'text/plain', 'text/comma-separated-values', '*/*'],
+        type: ['text/csv', 'text/plain', 'text/comma-separated-values', 'application/json', '*/*'],
         copyToCacheDirectory: true,
       });
       if (result.canceled) return;
@@ -242,6 +245,33 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
       const asset = result.assets[0];
       const response = await fetch(asset.uri);
       const text = await response.text();
+
+      if (asset.name.toLowerCase().endsWith('.json')) {
+        try {
+          const parsed = JSON.parse(text);
+          let materialCount = 0;
+          let flangeCount = 0;
+          let pointCount = 0;
+          for (const matKey of Object.keys(parsed)) {
+            const mat = parsed[matKey];
+            if (!mat?.flanges) continue;
+            materialCount++;
+            for (const flangeStr of Object.keys(mat.flanges)) {
+              flangeCount++;
+              pointCount += mat.flanges[Number(flangeStr)]?.length ?? 0;
+            }
+          }
+          if (materialCount === 0) {
+            setStatus({ type: 'error', msg: 'JSON file does not appear to be a valid export.' });
+            return;
+          }
+          setPickedJsonDB({ name: asset.name, materialCount, flangeCount, pointCount, db: parsed });
+        } catch {
+          setStatus({ type: 'error', msg: 'Could not parse JSON file.' });
+        }
+        return;
+      }
+
       const { rows, errors } = parseCSVContent(text);
 
       if (rows.length === 0) {
@@ -252,6 +282,21 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
       setPickedFile({ name: asset.name, rows, errors });
     } catch {
       setStatus({ type: 'error', msg: 'Could not read file. Please try again.' });
+    }
+  };
+
+  const handleImportJSON = async () => {
+    if (!pickedJsonDB) return;
+    setImporting(true);
+    setStatus(null);
+    try {
+      const count = await importFullDB(pickedJsonDB.db);
+      setPickedJsonDB(null);
+      setStatus({ type: 'success', msg: `Imported ${count} data point${count !== 1 ? 's' : ''} across ${pickedJsonDB.materialCount} material${pickedJsonDB.materialCount !== 1 ? 's' : ''}` });
+    } catch (e: any) {
+      setStatus({ type: 'error', msg: e.message || 'Import failed.' });
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -440,7 +485,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
           </View>
 
           <Text style={styles.stepHint}>
-            Also accepts tab-separated files pasted directly from Excel.
+            Accepts CSV/TXT (for a single flange) or a JSON export backup (restores all materials at once). Also accepts tab-separated files from Excel.
           </Text>
 
           <TouchableOpacity style={styles.filePickerZone} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); handlePickFile(); }}>
@@ -456,11 +501,22 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
                 </View>
                 <Text style={styles.filePickerChange}>Change</Text>
               </View>
+            ) : pickedJsonDB ? (
+              <View style={styles.filePickedContent}>
+                <Text style={styles.filePickedIcon}>✓</Text>
+                <View>
+                  <Text style={styles.filePickedName}>{pickedJsonDB.name}</Text>
+                  <Text style={styles.filePickedCount}>
+                    {pickedJsonDB.materialCount} material{pickedJsonDB.materialCount !== 1 ? 's' : ''} · {pickedJsonDB.flangeCount} flange{pickedJsonDB.flangeCount !== 1 ? 's' : ''} · {pickedJsonDB.pointCount} data points
+                  </Text>
+                </View>
+                <Text style={styles.filePickerChange}>Change</Text>
+              </View>
             ) : (
               <View style={styles.filePickerEmpty}>
                 <Text style={styles.filePickerEmptyIcon}>📄</Text>
-                <Text style={styles.filePickerEmptyText}>Tap to choose a CSV file</Text>
-                <Text style={styles.filePickerEmptyHint}>.csv or .txt</Text>
+                <Text style={styles.filePickerEmptyText}>Tap to choose a file</Text>
+                <Text style={styles.filePickerEmptyHint}>.csv, .txt, or .json (export backup)</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -499,7 +555,7 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
             </View>
           )}
 
-          {/* Import button */}
+          {/* Import button — CSV */}
           {pickedFile && pickedFile.rows.length > 0 && (
             <TouchableOpacity
               style={[styles.importButton, importing && styles.importButtonDisabled]}
@@ -510,6 +566,21 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
                 {importing
                   ? 'Importing…'
                   : `Import ${pickedFile.rows.length} rows into ${currentMaterialName}`}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Import button — JSON backup */}
+          {pickedJsonDB && (
+            <TouchableOpacity
+              style={[styles.importButton, importing && styles.importButtonDisabled]}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleImportJSON(); }}
+              disabled={importing}
+            >
+              <Text style={styles.importButtonText}>
+                {importing
+                  ? 'Importing…'
+                  : `Restore ${pickedJsonDB.pointCount} points across ${pickedJsonDB.materialCount} material${pickedJsonDB.materialCount !== 1 ? 's' : ''}`}
               </Text>
             </TouchableOpacity>
           )}
