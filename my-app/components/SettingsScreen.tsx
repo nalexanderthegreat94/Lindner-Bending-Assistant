@@ -293,9 +293,9 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
     setImporting(true);
     setStatus(null);
     try {
-      const count = await importFullDB(pickedJsonDB.db);
+      const { imported, skipped } = await importFullDB(pickedJsonDB.db);
       setPickedJsonDB(null);
-      setStatus({ type: 'success', msg: `Imported ${count} data point${count !== 1 ? 's' : ''} across ${pickedJsonDB.materialCount} material${pickedJsonDB.materialCount !== 1 ? 's' : ''}` });
+      setStatus({ type: 'success', msg: `Imported ${imported} data point${imported !== 1 ? 's' : ''}${skipped > 0 ? `, ${skipped} skipped (already existed)` : ''} across ${pickedJsonDB.materialCount} material${pickedJsonDB.materialCount !== 1 ? 's' : ''}` });
     } catch (e: any) {
       setStatus({ type: 'error', msg: e.message || 'Import failed.' });
     } finally {
@@ -314,11 +314,11 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
       const csv = pickedFile.rows
         .map(r => `${r.bendLength},${r.correction},${r.crown}`)
         .join('\n');
-      const count = await importCSV(target.matKey, target.flange, csv, target.matMeta);
+      const { imported, skipped } = await importCSV(target.matKey, target.flange, csv, target.matMeta);
       setPickedFile(null);
       setStatus({
         type: 'success',
-        msg: `Imported ${count} data point${count !== 1 ? 's' : ''} into ${target.flange}mm flange`,
+        msg: `Imported ${imported} data point${imported !== 1 ? 's' : ''}${skipped > 0 ? `, ${skipped} skipped (already existed)` : ''} into ${target.flange}mm flange`,
       });
     } catch (e: any) {
       setStatus({ type: 'error', msg: e.message || 'Import failed.' });

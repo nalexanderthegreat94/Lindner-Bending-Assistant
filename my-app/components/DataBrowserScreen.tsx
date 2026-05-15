@@ -31,7 +31,7 @@ function formatEnteredAt(ts?: number): string {
 const ADMIN_PASSWORD = 'LUSA26';
 
 export default function DataBrowserScreen() {
-  const { db, addDataPoint, deleteDataPoint } = useBendData();
+  const { db, editDataPoint, deleteDataPoint } = useBendData();
   const { width, height } = useWindowDimensions();
   const isTablet = Math.min(width, height) >= 600;
   const styles = useMemo(() => makeStyles(isTablet), [isTablet]);
@@ -95,14 +95,16 @@ export default function DataBrowserScreen() {
   // ── Edit modal ────────────────────────────────────────────────────────────
   const [editModal, setEditModal] = useState<{
     bendLength: number;
+    enteredAt: number;
     correction: string;
     crown: string;
   } | null>(null);
 
-  const handleEditOpen = (bendLength: number, correction: number | null, crown: number | null) => {
+  const handleEditOpen = (bendLength: number, enteredAt: number | undefined, correction: number | null, crown: number | null) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setEditModal({
       bendLength,
+      enteredAt: enteredAt ?? 0,
       correction: correction !== null ? String(correction) : '',
       crown: crown !== null ? String(crown) : '',
     });
@@ -116,13 +118,17 @@ export default function DataBrowserScreen() {
       Alert.alert('Invalid', 'Please enter a valid correction value.');
       return;
     }
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await addDataPoint(selectedMaterialKey, selectedFlange, {
-      bendLength: editModal.bendLength,
-      correction,
-      crown: isNaN(crown) ? 0 : crown,
-    });
-    setEditModal(null);
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      await editDataPoint(selectedMaterialKey, selectedFlange, editModal.bendLength, editModal.enteredAt, correction, isNaN(crown) ? 0 : crown);
+      setEditModal(null);
+    } catch (e: any) {
+      if (e.message === 'EXACT_DUPLICATE') {
+        Alert.alert('No Change', 'Another reading with these exact values already exists.');
+      } else {
+        Alert.alert('Error', 'Failed to save. Please try again.');
+      }
+    }
   };
 
   const openLogin = () => {
@@ -141,17 +147,17 @@ export default function DataBrowserScreen() {
     }
   };
 
-  const handleDelete = (bendLength: number) => {
+  const handleDelete = (bendLength: number, enteredAt: number | undefined) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     Alert.alert(
       'Delete Data Point',
-      `Remove ${bendLength}mm from the ${selectedFlange}mm flange?`,
+      `Remove this ${bendLength}mm reading from the ${selectedFlange}mm flange?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => deleteDataPoint(selectedMaterialKey, selectedFlange, bendLength),
+          onPress: () => deleteDataPoint(selectedMaterialKey, selectedFlange, bendLength, enteredAt ?? 0),
         },
       ]
     );
@@ -265,7 +271,7 @@ export default function DataBrowserScreen() {
               {isAdmin && (
                 <TouchableOpacity
                   style={styles.editButton}
-                  onPress={() => handleEditOpen(point.bendLength, point.correction, point.crown)}
+                  onPress={() => handleEditOpen(point.bendLength, point.enteredAt, point.correction, point.crown)}
                 >
                   <Text style={styles.editButtonText}>✎</Text>
                 </TouchableOpacity>
@@ -273,7 +279,7 @@ export default function DataBrowserScreen() {
               {isAdmin && (
                 <TouchableOpacity
                   style={styles.deleteButton}
-                  onPress={() => handleDelete(point.bendLength)}
+                  onPress={() => handleDelete(point.bendLength, point.enteredAt)}
                 >
                   <Text style={styles.deleteButtonText}>✕</Text>
                 </TouchableOpacity>

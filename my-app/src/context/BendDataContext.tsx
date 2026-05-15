@@ -6,11 +6,6 @@ import { MATERIALS_DB } from '../database/sampleData';
 const USER_DATA_KEY = '@bending_assistant/user_data';
 const DELETED_POINTS_KEY = '@bending_assistant/deleted_points';
 
-/**
- * Deep-merges user additions on top of the base MATERIALS_DB.
- * User data takes precedence: if a bend length already exists, it is overwritten.
- * All flange arrays remain sorted by bendLength after merge.
- */
 function mergeDB(base: MaterialsDatabase, additions: MaterialsDatabase): MaterialsDatabase {
   const result: MaterialsDatabase = JSON.parse(JSON.stringify(base));
 
@@ -19,24 +14,14 @@ function mergeDB(base: MaterialsDatabase, additions: MaterialsDatabase): Materia
       result[matKey] = JSON.parse(JSON.stringify(additions[matKey]));
       continue;
     }
-
     for (const flangeStr of Object.keys(additions[matKey].flanges)) {
       const flange = Number(flangeStr);
       const addPoints = additions[matKey].flanges[flange];
-
       if (!result[matKey].flanges[flange]) {
         result[matKey].flanges[flange] = [...addPoints];
       } else {
-        const existing = result[matKey].flanges[flange];
-        for (const pt of addPoints) {
-          const idx = existing.findIndex(p => p.bendLength === pt.bendLength);
-          if (idx >= 0) {
-            existing[idx] = pt;
-          } else {
-            existing.push(pt);
-          }
-        }
-        existing.sort((a, b) => a.bendLength - b.bendLength);
+        result[matKey].flanges[flange].push(...addPoints);
+        result[matKey].flanges[flange].sort((a, b) => a.bendLength - b.bendLength);
       }
     }
   }
@@ -44,7 +29,6 @@ function mergeDB(base: MaterialsDatabase, additions: MaterialsDatabase): Materia
   return result;
 }
 
-/** Applies a set of tombstoned points on top of a merged db. */
 function applyDeletions(merged: MaterialsDatabase, deleted: Set<string>): MaterialsDatabase {
   if (deleted.size === 0) return merged;
   const result: MaterialsDatabase = JSON.parse(JSON.stringify(merged));
@@ -52,7 +36,9 @@ function applyDeletions(merged: MaterialsDatabase, deleted: Set<string>): Materi
     for (const flangeStr of Object.keys(result[matKey].flanges)) {
       const flange = Number(flangeStr);
       result[matKey].flanges[flange] = result[matKey].flanges[flange].filter(
-        (p: BendDataPoint) => !deleted.has(`${matKey}::${flange}::${p.bendLength}`)
+        (p: BendDataPoint) =>
+          !deleted.has(`${matKey}::${flange}::${p.bendLength}`) &&
+          !deleted.has(`${matKey}::${flange}::${p.bendLength}::${p.enteredAt}`)
       );
     }
   }
@@ -63,18 +49,36 @@ function buildDB(base: MaterialsDatabase, additions: MaterialsDatabase, deleted:
   return applyDeletions(mergeDB(base, additions), deleted);
 }
 
+function liftTombstonesForBendLengths(deleted: Set<string>, materialKey: string, flange: number, bendLengths: number[]): Set<string> {
+  const result = new Set(deleted);
+  for (const bl of bendLengths) {
+    const legacy = `${materialKey}::${flange}::${bl}`;
+    result.delete(legacy);
+    for (const key of [...result]) {
+      if (key.startsWith(`${legacy}::`)) result.delete(key);
+    }
+  }
+  return result;
+}
+
 interface MaterialMeta {
   name: string;
   thickness: number;
   unit: 'mm' | 'gauge';
 }
 
+export interface ImportResult {
+  imported: number;
+  skipped: number;
+}
+
 interface BendDataContextValue {
   db: MaterialsDatabase;
   addDataPoint: (materialKey: string, flange: number, point: BendDataPoint, meta?: MaterialMeta) => Promise<void>;
-  importCSV: (materialKey: string, flange: number, csvText: string, meta?: MaterialMeta) => Promise<number>;
-  importFullDB: (incoming: MaterialsDatabase) => Promise<number>;
-  deleteDataPoint: (materialKey: string, flange: number, bendLength: number) => Promise<void>;
+  editDataPoint: (materialKey: string, flange: number, bendLength: number, enteredAt: number, newCorrection: number, newCrown: number) => Promise<void>;
+  importCSV: (materialKey: string, flange: number, csvText: string, meta?: MaterialMeta) => Promise<ImportResult>;
+  importFullDB: (incoming: MaterialsDatabase) => Promise<ImportResult>;
+  deleteDataPoint: (materialKey: string, flange: number, bendLength: number, enteredAt: number) => Promise<void>;
 }
 
 const BendDataContext = createContext<BendDataContextValue | null>(null);
@@ -110,8 +114,15 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
 
   const addDataPoint = useCallback(
     async (materialKey: string, flange: number, point: BendDataPoint, meta?: MaterialMeta) => {
-      const next: MaterialsDatabase = JSON.parse(JSON.stringify(userAdditions));
+      const existing = db[materialKey]?.flanges[flange] ?? [];
+      const isDuplicate = existing.some(p =>
+        p.bendLength === point.bendLength &&
+        p.correction === point.correction &&
+        (p.crown ?? 0) === (point.crown ?? 0)
+      );
+      if (isDuplicate) throw new Error('EXACT_DUPLICATE');
 
+      const next: MaterialsDatabase = JSON.parse(JSON.stringify(userAdditions));
       if (!next[materialKey]) {
         const base = MATERIALS_DB[materialKey];
         next[materialKey] = {
@@ -121,28 +132,73 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
           flanges: {},
         };
       }
-
       if (!next[materialKey].flanges[flange]) {
         next[materialKey].flanges[flange] = [];
       }
-
       const stamped: BendDataPoint = { ...point, enteredAt: point.enteredAt ?? Date.now() };
-      const pts = next[materialKey].flanges[flange];
-      const idx = pts.findIndex(p => p.bendLength === stamped.bendLength);
-      if (idx >= 0) {
-        pts[idx] = stamped;
-      } else {
-        pts.push(stamped);
-        pts.sort((a, b) => a.bendLength - b.bendLength);
-      }
-
+      next[materialKey].flanges[flange].push(stamped);
+      next[materialKey].flanges[flange].sort((a, b) => a.bendLength - b.bendLength);
       await persist(next);
     },
-    [userAdditions, persist]
+    [userAdditions, db, persist]
+  );
+
+  const editDataPoint = useCallback(
+    async (materialKey: string, flange: number, bendLength: number, enteredAt: number, newCorrection: number, newCrown: number) => {
+      const existing = db[materialKey]?.flanges[flange] ?? [];
+      const isDuplicate = existing.some(p =>
+        !(p.bendLength === bendLength && p.enteredAt === enteredAt) &&
+        p.bendLength === bendLength &&
+        p.correction === newCorrection &&
+        (p.crown ?? 0) === newCrown
+      );
+      if (isDuplicate) throw new Error('EXACT_DUPLICATE');
+
+      const isBuiltIn = MATERIALS_DB[materialKey]?.flanges[flange]?.some(
+        p => p.bendLength === bendLength && p.enteredAt === enteredAt
+      ) ?? false;
+
+      const next: MaterialsDatabase = JSON.parse(JSON.stringify(userAdditions));
+
+      if (next[materialKey]?.flanges[flange]) {
+        const pts = next[materialKey].flanges[flange];
+        const idx = pts.findIndex(p => p.bendLength === bendLength && p.enteredAt === enteredAt);
+        if (idx >= 0) pts.splice(idx, 1);
+      }
+
+      if (!next[materialKey]) {
+        const base = MATERIALS_DB[materialKey];
+        next[materialKey] = {
+          name: base?.name || materialKey,
+          thickness: base?.thickness ?? 0,
+          unit: base?.unit || 'mm',
+          flanges: {},
+        };
+      }
+      if (!next[materialKey].flanges[flange]) {
+        next[materialKey].flanges[flange] = [];
+      }
+      next[materialKey].flanges[flange].push({
+        bendLength,
+        correction: newCorrection,
+        crown: newCrown,
+        enteredAt: Date.now(),
+      });
+      next[materialKey].flanges[flange].sort((a, b) => a.bendLength - b.bendLength);
+
+      if (isBuiltIn) {
+        const tombstoneKey = `${materialKey}::${flange}::${bendLength}::${enteredAt}`;
+        const nextDeleted = new Set([...deletedPoints, tombstoneKey]);
+        await persist(next, nextDeleted);
+      } else {
+        await persist(next);
+      }
+    },
+    [userAdditions, db, deletedPoints, persist]
   );
 
   const importCSV = useCallback(
-    async (materialKey: string, flange: number, csvText: string, meta?: MaterialMeta): Promise<number> => {
+    async (materialKey: string, flange: number, csvText: string, meta?: MaterialMeta): Promise<ImportResult> => {
       const lines = csvText.trim().split('\n');
       const points: BendDataPoint[] = [];
       const importedAt = Date.now();
@@ -152,16 +208,8 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
         const bl = parseFloat(parts[0]);
         const corr = parseFloat(parts[1]);
         const crown = parts[2] ? parseFloat(parts[2]) : 0;
-
-        // Skip header rows and invalid lines
         if (isNaN(bl) || isNaN(corr)) continue;
-
-        points.push({
-          bendLength: bl,
-          correction: corr,
-          crown: isNaN(crown) ? 0 : crown,
-          enteredAt: importedAt,
-        });
+        points.push({ bendLength: bl, correction: corr, crown: isNaN(crown) ? 0 : crown, enteredAt: importedAt });
       }
 
       if (points.length === 0) {
@@ -169,6 +217,7 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
       }
 
       const next: MaterialsDatabase = JSON.parse(JSON.stringify(userAdditions));
+      const currentFlangeData = buildDB(MATERIALS_DB, next, deletedPoints)[materialKey]?.flanges[flange] ?? [];
 
       if (!next[materialKey]) {
         const base = MATERIALS_DB[materialKey];
@@ -179,36 +228,39 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
           flanges: {},
         };
       }
-
       if (!next[materialKey].flanges[flange]) {
         next[materialKey].flanges[flange] = [];
       }
 
+      let imported = 0;
+      let skipped = 0;
       const pts = next[materialKey].flanges[flange];
       for (const pt of points) {
-        const idx = pts.findIndex(p => p.bendLength === pt.bendLength);
-        if (idx >= 0) {
-          pts[idx] = pt;
-        } else {
-          pts.push(pt);
-        }
+        const isDuplicate = currentFlangeData.some(p =>
+          p.bendLength === pt.bendLength &&
+          p.correction === pt.correction &&
+          (p.crown ?? 0) === (pt.crown ?? 0)
+        );
+        if (isDuplicate) { skipped++; continue; }
+        pts.push(pt);
+        imported++;
       }
       pts.sort((a, b) => a.bendLength - b.bendLength);
 
-      const nextDeleted = new Set(deletedPoints);
-      for (const pt of points) {
-        nextDeleted.delete(`${materialKey}::${flange}::${pt.bendLength}`);
-      }
+      const nextDeleted = liftTombstonesForBendLengths(deletedPoints, materialKey, flange, points.map(p => p.bendLength));
       await persist(next, nextDeleted);
-      return points.length;
+      return { imported, skipped };
     },
     [userAdditions, deletedPoints, persist]
   );
 
   const importFullDB = useCallback(
-    async (incoming: MaterialsDatabase): Promise<number> => {
+    async (incoming: MaterialsDatabase): Promise<ImportResult> => {
       const next: MaterialsDatabase = JSON.parse(JSON.stringify(userAdditions));
-      let count = 0;
+      const currentDB = buildDB(MATERIALS_DB, next, deletedPoints);
+      let imported = 0;
+      let skipped = 0;
+      const allBendLengthsToLift: { matKey: string; flange: number; bendLength: number }[] = [];
 
       for (const matKey of Object.keys(incoming)) {
         const incomingMat = incoming[matKey];
@@ -217,7 +269,11 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
         if (!next[matKey]) {
           next[matKey] = JSON.parse(JSON.stringify(incomingMat));
           for (const flangeStr of Object.keys(next[matKey].flanges)) {
-            count += next[matKey].flanges[Number(flangeStr)]?.length ?? 0;
+            const f = Number(flangeStr);
+            for (const pt of next[matKey].flanges[f] ?? []) {
+              imported++;
+              allBendLengthsToLift.push({ matKey, flange: f, bendLength: pt.bendLength });
+            }
           }
           continue;
         }
@@ -225,56 +281,69 @@ export function BendDataProvider({ children }: { children: React.ReactNode }) {
         for (const flangeStr of Object.keys(incomingMat.flanges)) {
           const flange = Number(flangeStr);
           const addPoints = incomingMat.flanges[flange] ?? [];
+          const currentFlangeData = currentDB[matKey]?.flanges[flange] ?? [];
 
           if (!next[matKey].flanges[flange]) {
-            next[matKey].flanges[flange] = [...addPoints];
-            count += addPoints.length;
-          } else {
-            const existing = next[matKey].flanges[flange];
-            for (const pt of addPoints) {
-              const idx = existing.findIndex(p => p.bendLength === pt.bendLength);
-              if (idx >= 0) {
-                existing[idx] = pt;
-              } else {
-                existing.push(pt);
-                count++;
-              }
-            }
-            existing.sort((a, b) => a.bendLength - b.bendLength);
+            next[matKey].flanges[flange] = [];
           }
+
+          const pts = next[matKey].flanges[flange];
+          for (const pt of addPoints) {
+            const isDuplicate = currentFlangeData.some(p =>
+              p.bendLength === pt.bendLength &&
+              p.correction === pt.correction &&
+              (p.crown ?? 0) === (pt.crown ?? 0)
+            );
+            if (isDuplicate) { skipped++; continue; }
+            pts.push(pt);
+            imported++;
+            allBendLengthsToLift.push({ matKey, flange, bendLength: pt.bendLength });
+          }
+          pts.sort((a, b) => a.bendLength - b.bendLength);
         }
       }
 
-      const nextDeleted = new Set(deletedPoints);
-      for (const matKey of Object.keys(incoming)) {
-        const incomingMat = incoming[matKey];
-        if (!incomingMat?.flanges) continue;
-        for (const flangeStr of Object.keys(incomingMat.flanges)) {
-          const flange = Number(flangeStr);
-          for (const pt of incomingMat.flanges[flange] ?? []) {
-            nextDeleted.delete(`${matKey}::${flange}::${pt.bendLength}`);
-          }
-        }
+      let nextDeleted = new Set(deletedPoints);
+      for (const { matKey, flange, bendLength } of allBendLengthsToLift) {
+        nextDeleted = liftTombstonesForBendLengths(nextDeleted, matKey, flange, [bendLength]);
       }
       await persist(next, nextDeleted);
-      return count;
+      return { imported, skipped };
     },
     [userAdditions, deletedPoints, persist]
   );
 
   const deleteDataPoint = useCallback(
-    async (materialKey: string, flange: number, bendLength: number) => {
-      const key = `${materialKey}::${flange}::${bendLength}`;
-      const next = new Set([...deletedPoints, key]);
-      await AsyncStorage.setItem(DELETED_POINTS_KEY, JSON.stringify([...next]));
-      setDeletedPoints(next);
-      setDb(buildDB(MATERIALS_DB, userAdditions, next));
+    async (materialKey: string, flange: number, bendLength: number, enteredAt: number) => {
+      const next: MaterialsDatabase = JSON.parse(JSON.stringify(userAdditions));
+      let removedFromUser = false;
+
+      if (next[materialKey]?.flanges[flange]) {
+        const pts = next[materialKey].flanges[flange];
+        const idx = pts.findIndex(p => p.bendLength === bendLength && p.enteredAt === enteredAt);
+        if (idx >= 0) {
+          pts.splice(idx, 1);
+          removedFromUser = true;
+        }
+      }
+
+      const isBuiltIn = MATERIALS_DB[materialKey]?.flanges[flange]?.some(
+        p => p.bendLength === bendLength && p.enteredAt === enteredAt
+      ) ?? false;
+
+      if (isBuiltIn) {
+        const tombstoneKey = `${materialKey}::${flange}::${bendLength}::${enteredAt}`;
+        const nextDeleted = new Set([...deletedPoints, tombstoneKey]);
+        await persist(removedFromUser ? next : userAdditions, nextDeleted);
+      } else if (removedFromUser) {
+        await persist(next);
+      }
     },
-    [deletedPoints, userAdditions]
+    [deletedPoints, userAdditions, persist]
   );
 
   return (
-    <BendDataContext.Provider value={{ db, addDataPoint, importCSV, importFullDB, deleteDataPoint }}>
+    <BendDataContext.Provider value={{ db, addDataPoint, editDataPoint, importCSV, importFullDB, deleteDataPoint }}>
       {children}
     </BendDataContext.Provider>
   );

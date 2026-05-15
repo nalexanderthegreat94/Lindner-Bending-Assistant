@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useBendData } from '@/src/context/BendDataContext';
-import { findCorrection } from '@/src/utils/interpolation';
+import { findCorrection, averageByBendLength } from '@/src/utils/interpolation';
 import { CorrectionResult } from '@/src/types';
 import DropdownPicker from '@/components/ui/DropdownPicker';
 import CorrectionChart from '@/components/ui/CorrectionChart';
@@ -96,7 +96,7 @@ export default function LookupScreen() {
   const chartData = useMemo(() => {
     const mat = db[material];
     if (!mat || !mat.flanges[chartFlange]) return [];
-    return mat.flanges[chartFlange]
+    return averageByBendLength(mat.flanges[chartFlange])
       .filter(d => d.correction !== null)
       .map(d => ({ bendLength: d.bendLength, correction: d.correction, crown: d.crown }));
   }, [db, material, chartFlange]);
@@ -204,8 +204,12 @@ export default function LookupScreen() {
       setShowAddNewModal(false);
       setAddNewFormState(getDefaultAddNewState());
       alert(`Saved: ${bendLen}mm → ${correction}° for ${flange}mm flange`);
-    } catch {
-      alert('Failed to save. Please try again.');
+    } catch (e: any) {
+      if (e.message === 'EXACT_DUPLICATE') {
+        alert('A data point with these exact values already exists. No duplicate was created.');
+      } else {
+        alert('Failed to save. Please try again.');
+      }
     }
   };
 

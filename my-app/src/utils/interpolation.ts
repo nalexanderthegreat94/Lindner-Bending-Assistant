@@ -1,6 +1,31 @@
 import { BendDataPoint, CorrectionResult, MaterialsDatabase } from '../types';
 import { MATERIALS_DB } from '../database/sampleData';
 
+export function averageByBendLength(data: BendDataPoint[]): BendDataPoint[] {
+  const map = new Map<number, BendDataPoint[]>();
+  for (const pt of data) {
+    const group = map.get(pt.bendLength) ?? [];
+    group.push(pt);
+    map.set(pt.bendLength, group);
+  }
+  const result: BendDataPoint[] = [];
+  for (const [bendLength, pts] of map) {
+    if (pts.length === 1) {
+      result.push(pts[0]);
+    } else {
+      const corrections = pts.filter(p => p.correction !== null).map(p => p.correction as number);
+      const crowns = pts.filter(p => p.crown !== null).map(p => p.crown as number);
+      result.push({
+        bendLength,
+        correction: corrections.length > 0 ? corrections.reduce((a, b) => a + b, 0) / corrections.length : null,
+        crown: crowns.length > 0 ? crowns.reduce((a, b) => a + b, 0) / crowns.length : null,
+        enteredAt: Math.max(...pts.map(p => p.enteredAt ?? 0)),
+      });
+    }
+  }
+  return result.sort((a, b) => a.bendLength - b.bendLength);
+}
+
 /**
  * Linear interpolation between two points
  */
@@ -69,10 +94,11 @@ function linearRegressionExtrapolate(
  * Handles "not possible" entries, exact matches, interpolation, and extrapolation.
  */
 function resolveBendLength(
-  flangeData: BendDataPoint[],
+  rawFlangeData: BendDataPoint[],
   flangeLength: number,
   bendLength: number
 ): CorrectionResult {
+  const flangeData = averageByBendLength(rawFlangeData);
   // Filter out "not possible" entries for interpolation
   const validData = flangeData.filter((d) => d.correction !== null);
 
