@@ -14,9 +14,8 @@ import * as Haptics from 'expo-haptics';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 import { useBendData } from '@/src/context/BendDataContext';
+import { useAdminPassword } from '@/src/context/AdminPasswordContext';
 import DropdownPicker from '@/components/ui/DropdownPicker';
-
-const ADMIN_PASSWORD = 'LUSA26';
 
 // ─── Template generator ───────────────────────────────────────────────────────
 
@@ -88,6 +87,7 @@ function parseCSVContent(text: string): { rows: ParsedRow[]; errors: string[] } 
 // ─── Root component: password gate ───────────────────────────────────────────
 
 export default function SettingsScreen() {
+  const { password: ADMIN_PASSWORD } = useAdminPassword();
   const [unlocked, setUnlocked] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
@@ -146,13 +146,14 @@ export default function SettingsScreen() {
     );
   }
 
-  return <SettingsContent onLock={() => { setUnlocked(false); setPasswordInput(''); }} />;
+  return <SettingsContent adminPassword={ADMIN_PASSWORD} onLock={() => { setUnlocked(false); setPasswordInput(''); }} />;
 }
 
 // ─── Unlocked settings content ────────────────────────────────────────────────
 
-function SettingsContent({ onLock }: { onLock: () => void }) {
+function SettingsContent({ adminPassword, onLock }: { adminPassword: string; onLock: () => void }) {
   const { db, importCSV, importFullDB } = useBendData();
+  const { changePassword } = useAdminPassword();
 
   const getDefaultForm = () => ({
     selectedMaterialKey: Object.keys(db)[0] ?? '__new__',
@@ -174,6 +175,12 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
   const [importing, setImporting] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [confirmPending, setConfirmPending] = useState<'csv' | 'json' | null>(null);
+  const [showChangePw, setShowChangePw] = useState(false);
+  const [changePwCurrent, setChangePwCurrent] = useState('');
+  const [changePwNew, setChangePwNew] = useState('');
+  const [changePwConfirm, setChangePwConfirm] = useState('');
+  const [changePwError, setChangePwError] = useState('');
+  const [changePwSuccess, setChangePwSuccess] = useState(false);
 
   const materialOptions = useMemo(() => [
     ...Object.keys(db).map(key => ({ label: db[key].name, value: key })),
@@ -327,6 +334,33 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
     }
   };
 
+  const openChangePw = () => {
+    setChangePwCurrent('');
+    setChangePwNew('');
+    setChangePwConfirm('');
+    setChangePwError('');
+    setChangePwSuccess(false);
+    setShowChangePw(true);
+  };
+
+  const handleChangePw = async () => {
+    if (changePwCurrent !== adminPassword) {
+      setChangePwError('Current password is incorrect.');
+      return;
+    }
+    if (changePwNew.trim().length < 4) {
+      setChangePwError('New password must be at least 4 characters.');
+      return;
+    }
+    if (changePwNew !== changePwConfirm) {
+      setChangePwError('New passwords do not match.');
+      return;
+    }
+    await changePassword(changePwNew.trim());
+    setChangePwSuccess(true);
+    setChangePwError('');
+  };
+
   const handleConfirmImport = () => {
     setConfirmPending(null);
     if (confirmPending === 'json') executeImportJSON();
@@ -365,9 +399,14 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
             <Text style={styles.headerTitle}>SETTINGS</Text>
             <Text style={styles.headerSubtitle}>Admin</Text>
           </View>
-          <TouchableOpacity style={styles.lockButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onLock(); }}>
-            <Text style={styles.lockButtonText}>Lock</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <TouchableOpacity style={styles.changePwButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); openChangePw(); }}>
+              <Text style={styles.changePwButtonText}>Change Password</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.lockButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onLock(); }}>
+              <Text style={styles.lockButtonText}>Lock</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Import section */}
@@ -616,6 +655,70 @@ function SettingsContent({ onLock }: { onLock: () => void }) {
         <View style={styles.spacer} />
       </ScrollView>
 
+      {/* Change password modal */}
+      <Modal visible={showChangePw} transparent animationType="fade" onRequestClose={() => setShowChangePw(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalBox}>
+            <Text style={styles.modalTitle}>Change Admin Password</Text>
+            <View style={styles.modalDivider} />
+            {changePwSuccess ? (
+              <>
+                <Text style={[styles.modalBodyText, { color: '#4ade80', textAlign: 'center', marginBottom: 20 }]}>
+                  ✓ Password changed successfully.
+                </Text>
+                <TouchableOpacity style={styles.modalCloseButton} onPress={() => setShowChangePw(false)}>
+                  <Text style={styles.modalCloseButtonText}>Done</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.label}>Current Password</Text>
+                <TextInput
+                  style={[styles.input, { marginBottom: 14 }]}
+                  placeholder="Enter current password"
+                  placeholderTextColor="#555"
+                  secureTextEntry
+                  value={changePwCurrent}
+                  onChangeText={(t) => { setChangePwCurrent(t); setChangePwError(''); }}
+                  autoCapitalize="none"
+                />
+                <Text style={styles.label}>New Password</Text>
+                <TextInput
+                  style={[styles.input, { marginBottom: 14 }]}
+                  placeholder="Enter new password"
+                  placeholderTextColor="#555"
+                  secureTextEntry
+                  value={changePwNew}
+                  onChangeText={(t) => { setChangePwNew(t); setChangePwError(''); }}
+                  autoCapitalize="none"
+                />
+                <Text style={styles.label}>Confirm New Password</Text>
+                <TextInput
+                  style={[styles.input, { marginBottom: 14 }]}
+                  placeholder="Re-enter new password"
+                  placeholderTextColor="#555"
+                  secureTextEntry
+                  value={changePwConfirm}
+                  onChangeText={(t) => { setChangePwConfirm(t); setChangePwError(''); }}
+                  autoCapitalize="none"
+                />
+                {changePwError ? (
+                  <Text style={{ color: '#f87171', fontSize: 13, marginBottom: 12 }}>{changePwError}</Text>
+                ) : null}
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity style={styles.modalCancelButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowChangePw(false); }}>
+                    <Text style={styles.modalCancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalConfirmButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleChangePw(); }}>
+                    <Text style={styles.modalConfirmButtonText}>Save</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* Info modal */}
       <Modal visible={showInfoModal} transparent animationType="fade" onRequestClose={() => setShowInfoModal(false)}>
         <View style={styles.modalOverlay}>
@@ -718,6 +821,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#1a1a2e', borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8,
   },
   lockButtonText: { color: '#f59e0b', fontSize: 13, fontWeight: '700' },
+  changePwButton: {
+    backgroundColor: '#1a1a2e', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8,
+    borderWidth: 1, borderColor: '#3d3d5c',
+  },
+  changePwButtonText: { color: '#aaa', fontSize: 12, fontWeight: '600' },
 
   sectionCard: {
     backgroundColor: '#111125', borderWidth: 1, borderColor: '#3d3d5c',

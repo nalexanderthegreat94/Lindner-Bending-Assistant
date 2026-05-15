@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useBendData } from '@/src/context/BendDataContext';
+import { useAdminPassword } from '@/src/context/AdminPasswordContext';
 import DropdownPicker from '@/components/ui/DropdownPicker';
 
 function formatEnteredAt(ts?: number): string {
@@ -27,10 +28,9 @@ function formatEnteredAt(ts?: number): string {
   return `${month}/${day}/${year}\n${h}:${minutes}${ampm}`;
 }
 
-const ADMIN_PASSWORD = 'LUSA26';
-
 export default function DataBrowserScreen() {
   const { db, editDataPoint, deleteDataPoint } = useBendData();
+  const { password: ADMIN_PASSWORD } = useAdminPassword();
   const { width, height } = useWindowDimensions();
   const isTablet = Math.min(width, height) >= 600;
   const styles = useMemo(() => makeStyles(isTablet), [isTablet]);

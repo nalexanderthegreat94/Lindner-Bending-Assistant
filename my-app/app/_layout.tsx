@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { BendDataProvider } from '@/src/context/BendDataContext';
+import { AdminPasswordProvider } from '@/src/context/AdminPasswordContext';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -16,15 +17,17 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <BendDataProvider>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <Stack>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-          </Stack>
-          <StatusBar style="light" />
-        </ThemeProvider>
-      </BendDataProvider>
+      <AdminPasswordProvider>
+        <BendDataProvider>
+          <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
+            </Stack>
+            <StatusBar style="light" />
+          </ThemeProvider>
+        </BendDataProvider>
+      </AdminPasswordProvider>
     </SafeAreaProvider>
   );
 }
