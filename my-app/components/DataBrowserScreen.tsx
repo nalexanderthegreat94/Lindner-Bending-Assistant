@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Modal,
   TextInput,
-  Alert,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -92,6 +91,9 @@ export default function DataBrowserScreen() {
     return () => { if (adminTimerRef.current) clearTimeout(adminTimerRef.current); };
   }, [isAdmin]);
 
+  // ── Delete confirmation modal ─────────────────────────────────────────────
+  const [deleteConfirm, setDeleteConfirm] = useState<{ bendLength: number; enteredAt: number } | null>(null);
+
   // ── Edit modal ────────────────────────────────────────────────────────────
   const [editModal, setEditModal] = useState<{
     bendLength: number;
@@ -149,18 +151,13 @@ export default function DataBrowserScreen() {
 
   const handleDelete = (bendLength: number, enteredAt: number | undefined) => {
     try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); } catch {}
-    Alert.alert(
-      'Delete Data Point',
-      `Remove this ${bendLength}mm reading from the ${selectedFlange}mm flange?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => deleteDataPoint(selectedMaterialKey, selectedFlange, bendLength, enteredAt ?? 0),
-        },
-      ]
-    );
+    setDeleteConfirm({ bendLength, enteredAt: enteredAt ?? 0 });
+  };
+
+  const handleDeleteConfirm = () => {
+    if (!deleteConfirm) return;
+    deleteDataPoint(selectedMaterialKey, selectedFlange, deleteConfirm.bendLength, deleteConfirm.enteredAt);
+    setDeleteConfirm(null);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -317,6 +314,40 @@ export default function DataBrowserScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+      {/* Delete confirmation modal */}
+      <Modal visible={!!deleteConfirm} transparent animationType="fade">
+        <TouchableOpacity
+          style={styles.modalBackdrop}
+          activeOpacity={1}
+          onPress={() => setDeleteConfirm(null)}
+        >
+          <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+            <View style={styles.loginBox}>
+              <Text style={styles.loginTitle}>Delete Data Point</Text>
+              {deleteConfirm && (
+                <Text style={[styles.loginTitle, { fontSize: 14, marginTop: -12, marginBottom: 24, color: '#888', textAlign: 'center' }]}>
+                  Remove the {deleteConfirm.bendLength}mm reading from the {selectedFlange}mm flange?
+                </Text>
+              )}
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity
+                  style={[styles.loginButton, { flex: 1, backgroundColor: '#333' }]}
+                  onPress={() => setDeleteConfirm(null)}
+                >
+                  <Text style={styles.loginButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.loginButton, { flex: 1, backgroundColor: '#dc2626' }]}
+                  onPress={handleDeleteConfirm}
+                >
+                  <Text style={styles.loginButtonText}>Delete</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       {/* Edit modal */}
       <Modal visible={!!editModal} transparent animationType="fade">
         <TouchableOpacity
