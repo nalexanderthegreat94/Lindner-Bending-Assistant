@@ -20,8 +20,13 @@ function mergeDB(base: MaterialsDatabase, additions: MaterialsDatabase): Materia
       if (!result[matKey].flanges[flange]) {
         result[matKey].flanges[flange] = [...addPoints];
       } else {
-        result[matKey].flanges[flange].push(...addPoints);
-        result[matKey].flanges[flange].sort((a, b) => a.bendLength - b.bendLength);
+        const existing = result[matKey].flanges[flange];
+        for (const pt of addPoints) {
+          if (!existing.some(p => p.bendLength === pt.bendLength && p.enteredAt === pt.enteredAt)) {
+            existing.push(pt);
+          }
+        }
+        existing.sort((a, b) => a.bendLength - b.bendLength);
       }
     }
   }
