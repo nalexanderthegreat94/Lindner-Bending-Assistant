@@ -148,7 +148,7 @@ export default function DataBrowserScreen() {
   };
 
   const handleDelete = (bendLength: number, enteredAt: number | undefined) => {
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    try { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); } catch {}
     Alert.alert(
       'Delete Data Point',
       `Remove this ${bendLength}mm reading from the ${selectedFlange}mm flange?`,
