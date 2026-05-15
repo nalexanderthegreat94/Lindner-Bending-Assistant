@@ -62,6 +62,7 @@ export default function LookupScreen() {
     bendLength: '',
     bendCorrection: '',
     crown: '',
+    error: '',
   });
 
   const [addNewFormState, setAddNewFormState] = useState(getDefaultAddNewState);
@@ -168,33 +169,40 @@ export default function LookupScreen() {
     setResult(res);
   };
 
+  const setAddError = (error: string) =>
+    setAddNewFormState(prev => ({ ...prev, error }));
+
   const handleAddNewCorrection = async () => {
     const bendLen = parseFloat(addNewFormState.bendLength);
     const correction = parseFloat(addNewFormState.bendCorrection);
     const crown = addNewFormState.crown ? parseFloat(addNewFormState.crown) : 0;
-    if (isNaN(bendLen) || bendLen <= 0 || isNaN(correction)) {
-      alert('Please enter a valid bend length and correction');
-      return;
-    }
+
     let matKey: string;
     let matMeta: { name: string; thickness: number; unit: 'mm' | 'gauge' } | undefined;
     if (addNewFormState.selectedMaterialKey === '__new__') {
       const name = addNewFormState.newMaterialName.trim();
       const thickness = parseFloat(addNewFormState.newMaterialThickness);
-      if (!name) { alert('Please enter a material name'); return; }
-      if (isNaN(thickness) || thickness <= 0) { alert('Please enter a valid thickness'); return; }
+      if (!name) { setAddError('Please enter a material name.'); return; }
+      if (isNaN(thickness) || thickness <= 0) { setAddError('Please enter a valid thickness.'); return; }
       matKey = name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + thickness + addNewFormState.newMaterialUnit;
       matMeta = { name, thickness, unit: addNewFormState.newMaterialUnit };
     } else {
       matKey = addNewFormState.selectedMaterialKey;
     }
+
     let flange: number;
     if (addNewFormState.selectedFlange === '__new__') {
       flange = parseFloat(addNewFormState.newFlangeHeight);
-      if (isNaN(flange) || flange <= 0) { alert('Please enter a valid flange height'); return; }
+      if (isNaN(flange) || flange <= 0) { setAddError('Please enter a valid flange height.'); return; }
     } else {
       flange = Number(addNewFormState.selectedFlange);
     }
+
+    if (isNaN(bendLen) || bendLen <= 0 || isNaN(correction)) {
+      setAddError('Please enter a valid bend length and correction.');
+      return;
+    }
+
     try {
       await addDataPoint(matKey, flange, {
         bendLength: bendLen,
@@ -203,12 +211,11 @@ export default function LookupScreen() {
       }, matMeta);
       setShowAddNewModal(false);
       setAddNewFormState(getDefaultAddNewState());
-      alert(`Saved: ${bendLen}mm → ${correction}° for ${flange}mm flange`);
     } catch (e: any) {
       if (e.message === 'EXACT_DUPLICATE') {
-        alert('A data point with these exact values already exists. No duplicate was created.');
+        setAddError('A data point with these exact values already exists.');
       } else {
-        alert('Failed to save. Please try again.');
+        setAddError('Failed to save. Please try again.');
       }
     }
   };
@@ -575,7 +582,7 @@ export default function LookupScreen() {
                   placeholder="100"
                   keyboardType="decimal-pad"
                   value={addNewFormState.bendLength}
-                  onChangeText={(text) => setAddNewFormState({ ...addNewFormState, bendLength: text })}
+                  onChangeText={(text) => setAddNewFormState({ ...addNewFormState, bendLength: text, error: '' })}
                 />
               </View>
               <View style={styles.formGroup}>
@@ -585,7 +592,7 @@ export default function LookupScreen() {
                   placeholder="5.5"
                   keyboardType="decimal-pad"
                   value={addNewFormState.bendCorrection}
-                  onChangeText={(text) => setAddNewFormState({ ...addNewFormState, bendCorrection: text })}
+                  onChangeText={(text) => setAddNewFormState({ ...addNewFormState, bendCorrection: text, error: '' })}
                 />
               </View>
               <View style={styles.formGroup}>
@@ -598,6 +605,11 @@ export default function LookupScreen() {
                   onChangeText={(text) => setAddNewFormState({ ...addNewFormState, crown: text })}
                 />
               </View>
+              {addNewFormState.error ? (
+                <Text style={{ color: '#f87171', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 4 }}>
+                  {addNewFormState.error}
+                </Text>
+              ) : null}
               <TouchableOpacity style={styles.submitButton} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); handleAddNewCorrection(); }}>
                 <Text style={styles.submitButtonText}>Add Correction</Text>
               </TouchableOpacity>

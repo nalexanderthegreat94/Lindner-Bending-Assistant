@@ -100,6 +100,7 @@ export default function DataBrowserScreen() {
     enteredAt: number;
     correction: string;
     crown: string;
+    error?: string;
   } | null>(null);
 
   const handleEditOpen = (bendLength: number, enteredAt: number | undefined, correction: number | null, crown: number | null) => {
@@ -117,7 +118,7 @@ export default function DataBrowserScreen() {
     const correction = parseFloat(editModal.correction);
     const crown = parseFloat(editModal.crown);
     if (isNaN(correction)) {
-      Alert.alert('Invalid', 'Please enter a valid correction value.');
+      setEditModal(prev => prev ? { ...prev, error: 'Please enter a valid correction value.' } : null);
       return;
     }
     try {
@@ -126,9 +127,9 @@ export default function DataBrowserScreen() {
       setEditModal(null);
     } catch (e: any) {
       if (e.message === 'EXACT_DUPLICATE') {
-        Alert.alert('No Change', 'Another reading with these exact values already exists.');
+        setEditModal(prev => prev ? { ...prev, error: 'These exact values already exist for this reading.' } : null);
       } else {
-        Alert.alert('Error', 'Failed to save. Please try again.');
+        setEditModal(prev => prev ? { ...prev, error: 'Failed to save. Please try again.' } : null);
       }
     }
   };
@@ -368,7 +369,7 @@ export default function DataBrowserScreen() {
                 placeholderTextColor="#555"
                 keyboardType="decimal-pad"
                 value={editModal?.correction ?? ''}
-                onChangeText={(t) => setEditModal(prev => prev ? { ...prev, correction: t } : null)}
+                onChangeText={(t) => setEditModal(prev => prev ? { ...prev, correction: t, error: undefined } : null)}
               />
               <Text style={[styles.editFieldLabel, { marginTop: 12 }]}>Crown</Text>
               <TextInput
@@ -377,8 +378,13 @@ export default function DataBrowserScreen() {
                 placeholderTextColor="#555"
                 keyboardType="decimal-pad"
                 value={editModal?.crown ?? ''}
-                onChangeText={(t) => setEditModal(prev => prev ? { ...prev, crown: t } : null)}
+                onChangeText={(t) => setEditModal(prev => prev ? { ...prev, crown: t, error: undefined } : null)}
               />
+              {editModal?.error ? (
+                <Text style={{ color: '#f87171', fontSize: 13, textAlign: 'center', marginTop: 10 }}>
+                  {editModal.error}
+                </Text>
+              ) : null}
               <TouchableOpacity style={styles.loginButton} onPress={handleEditSave}>
                 <Text style={styles.loginButtonText}>Save</Text>
               </TouchableOpacity>
