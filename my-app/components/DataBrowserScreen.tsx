@@ -324,11 +324,9 @@ export default function DataBrowserScreen() {
           <TouchableOpacity activeOpacity={1} onPress={() => {}}>
             <View style={styles.loginBox}>
               <Text style={styles.loginTitle}>Delete Data Point</Text>
-              {deleteConfirm && (
-                <Text style={[styles.loginTitle, { fontSize: 14, marginTop: -12, marginBottom: 24, color: '#888', textAlign: 'center' }]}>
-                  Remove the {deleteConfirm.bendLength}mm reading from the {selectedFlange}mm flange?
-                </Text>
-              )}
+              <Text style={[styles.loginTitle, { fontSize: 14, marginTop: -12, marginBottom: 24, color: '#888', textAlign: 'center' }]}>
+                Remove this data point?
+              </Text>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <TouchableOpacity
                   style={[styles.loginButton, { flex: 1, backgroundColor: '#333' }]}
